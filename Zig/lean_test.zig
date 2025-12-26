@@ -955,7 +955,6 @@ test "type: ptrTag on null returns 0" {
 
 test "ctor scalar: aligned access at multiple offsets" {
     // Verify that properly aligned multi-field access works correctly
-    const scalar_size = @sizeOf(u32) + @sizeOf(u16) + @sizeOf(u8) + 1; // 4+2+1+1=8 bytes (with padding)
     const ctor = lean.allocCtor(0, 0, 8) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(ctor);
 

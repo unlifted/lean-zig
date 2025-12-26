@@ -117,38 +117,35 @@ Overall, the test reference counting is excellent:
 - Tests properly handle ownership transfer
 - Circular reference test correctly demonstrates manual cleanup
 
-### ISSUE 2.1: Circular Reference Test May Leak (FIXED)
+### ISSUE 2.1: Circular Reference Test May Leak (FIXED IN COMMIT 0efb209)
 
-**Original Problem**:
+**BEFORE (Original buggy code - DO NOT USE):**
 ```zig
 test "refcount: circular references with manual cleanup" {
     const obj1 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
     const obj2 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
 
-    lean.ctorSet(obj1, 0, obj2);  // obj2 rc = 2
-    lean.lean_inc_ref(obj2);       // obj2 rc = 3 ❌
-    lean.ctorSet(obj2, 0, obj1);  // obj1 rc = 2
-    lean.lean_inc_ref(obj1);       // obj1 rc = 3 ❌
+    lean.ctorSet(obj1, 0, obj2);  // obj2 rc = 1 (stored but not incremented)
+    lean.lean_inc_ref(obj2);       // obj2 rc = 2
+    lean.ctorSet(obj2, 0, obj1);  // obj1 rc = 1 (stored but not incremented)  
+    lean.lean_inc_ref(obj1);       // obj1 rc = 2
 
-    // ...
-    lean.lean_dec_ref(obj1);  // obj1 rc = 2
-    lean.lean_dec_ref(obj2);  // obj2 rc = 2
+    // Problem: inc_ref AFTER ctorSet leaves cycle with rc=2 each
+    lean.lean_dec_ref(obj1);  // obj1 rc = 1 (LEAK - still in cycle)
+    lean.lean_dec_ref(obj2);  // obj2 rc = 1 (LEAK - still in cycle)
 }
 ```
 
-**Problem**: After `ctorSet`, the reference count is already incremented. The manual `lean_inc_ref` calls add an extra reference. At the end:
-- obj1 rc = 2 (should be 1)
-- obj2 rc = 2 (should be 1)
+**Problem**: The manual `lean_inc_ref` calls came after `ctorSet`, but `ctorSet` doesn't automatically increment. This left both objects with rc=1 but still referencing each other, causing a memory leak.
 
-Both objects leak because they're not fully released.
-
-**Fix Applied**: The test has been rewritten to properly demonstrate cycle breaking:
-1. Manually increment references before `ctorSet` (since `ctorSet` doesn't auto-increment)
-2. Break the cycle by explicitly dec_ref'ing the field objects before final cleanup
+**AFTER (Fixed code - Current implementation):**
+The test has been rewritten to:
+1. Manually increment references BEFORE `ctorSet` (proper ownership transfer)
+2. Break the cycle by explicitly dec_ref'ing field objects
 3. Replace cyclic references with scalars
-4. Verify rc returns to 1 before final dec_ref
+4. Verify rc returns to 1 before final cleanup
 
-The fixed version properly demonstrates manual cleanup of circular references without leaking memory.
+See `Zig/lean_test.zig` lines 759-795 for the correct implementation.
 
 ### ISSUE 2.2: `ctorRelease` Implementation
 
