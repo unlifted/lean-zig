@@ -512,6 +512,8 @@ pub inline fn objectOther(o: b_obj_arg) u8 {
 ///
 /// Tagged scalars have the low bit set (odd address) and represent
 /// small integers without heap allocation.
+///
+/// Returns `false` for null pointers (null has address 0, which is even).
 pub inline fn isScalar(o: b_obj_arg) bool {
     return (@intFromPtr(o) & 1) == 1;
 }
@@ -519,18 +521,27 @@ pub inline fn isScalar(o: b_obj_arg) bool {
 /// Check if an object is a constructor.
 ///
 /// This includes both heap-allocated constructors and scalar constructors.
+///
+/// ## Precondition
+/// - `o` must not be null when checking heap objects (scalars are safe)
 pub inline fn isCtor(o: b_obj_arg) bool {
     if (isScalar(o)) return true;
     return objectTag(o) <= Tag.max_ctor;
 }
 
 /// Check if an object is a string.
+///
+/// ## Precondition
+/// - `o` must not be null
 pub inline fn isString(o: b_obj_arg) bool {
     if (isScalar(o)) return false;
     return objectTag(o) == Tag.string;
 }
 
 /// Check if an object is an array.
+///
+/// ## Precondition
+/// - `o` must not be null
 pub inline fn isArray(o: b_obj_arg) bool {
     if (isScalar(o)) return false;
     return objectTag(o) == Tag.array;
@@ -615,7 +626,14 @@ pub inline fn ctorNumObjs(o: b_obj_arg) u8 {
 /// Get a pointer to the scalar field region of a constructor.
 ///
 /// Scalar fields begin after the object fields.
-pub fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
+///
+/// ## Performance Note
+/// This function is inlined to eliminate function call overhead in hot-path
+/// scalar accessor functions.
+///
+/// ## Precondition
+/// - `o` must be a valid, non-null constructor object
+pub inline fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
     const obj = o orelse unreachable;
     const base: [*]u8 = @ptrCast(obj);
     const num_objs = ctorNumObjs(o);
@@ -623,6 +641,12 @@ pub fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
 }
 
 /// Change the tag of a constructor (change variant).
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `tag` should be <= Tag.max_ctor (243) to remain a constructor.
+///   Values > 243 are reserved for special types (string, array, etc.).
+///   Setting an invalid tag results in undefined behavior.
 pub fn ctorSetTag(o: obj_res, tag: u8) void {
     const obj = o orelse unreachable;
     const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));
@@ -648,18 +672,33 @@ pub fn ctorRelease(o: obj_res, num_objs: u8) void {
 // They take a byte offset to allow flexible layout of multiple scalar types.
 
 /// Get a uint8 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be within the allocated scalar region
 pub inline fn ctorGetUint8(o: b_obj_arg, offset: usize) u8 {
     const ptr = ctorScalarCptr(o);
     return ptr[offset];
 }
 
 /// Set a uint8 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be within the allocated scalar region
 pub inline fn ctorSetUint8(o: obj_res, offset: usize, val: u8) void {
     const ptr = ctorScalarCptr(o);
     ptr[offset] = val;
 }
 
 /// Get a uint16 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 2-byte aligned (offset % 2 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetUint16(o: b_obj_arg, offset: usize) u16 {
     const ptr = ctorScalarCptr(o);
     const aligned: *const u16 = @ptrCast(@alignCast(ptr + offset));
@@ -667,6 +706,13 @@ pub inline fn ctorGetUint16(o: b_obj_arg, offset: usize) u16 {
 }
 
 /// Set a uint16 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 2-byte aligned (offset % 2 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetUint16(o: obj_res, offset: usize, val: u16) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *u16 = @ptrCast(@alignCast(ptr + offset));
@@ -674,6 +720,13 @@ pub inline fn ctorSetUint16(o: obj_res, offset: usize, val: u16) void {
 }
 
 /// Get a uint32 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 4-byte aligned (offset % 4 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetUint32(o: b_obj_arg, offset: usize) u32 {
     const ptr = ctorScalarCptr(o);
     const aligned: *const u32 = @ptrCast(@alignCast(ptr + offset));
@@ -681,6 +734,13 @@ pub inline fn ctorGetUint32(o: b_obj_arg, offset: usize) u32 {
 }
 
 /// Set a uint32 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 4-byte aligned (offset % 4 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetUint32(o: obj_res, offset: usize, val: u32) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *u32 = @ptrCast(@alignCast(ptr + offset));
@@ -688,6 +748,13 @@ pub inline fn ctorSetUint32(o: obj_res, offset: usize, val: u32) void {
 }
 
 /// Get a uint64 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetUint64(o: b_obj_arg, offset: usize) u64 {
     const ptr = ctorScalarCptr(o);
     const aligned: *const u64 = @ptrCast(@alignCast(ptr + offset));
@@ -695,6 +762,13 @@ pub inline fn ctorGetUint64(o: b_obj_arg, offset: usize) u64 {
 }
 
 /// Set a uint64 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetUint64(o: obj_res, offset: usize, val: u64) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *u64 = @ptrCast(@alignCast(ptr + offset));
@@ -702,6 +776,13 @@ pub inline fn ctorSetUint64(o: obj_res, offset: usize, val: u64) void {
 }
 
 /// Get a usize scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned on 64-bit systems (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetUsize(o: b_obj_arg, offset: usize) usize {
     const ptr = ctorScalarCptr(o);
     const aligned: *const usize = @ptrCast(@alignCast(ptr + offset));
@@ -709,6 +790,13 @@ pub inline fn ctorGetUsize(o: b_obj_arg, offset: usize) usize {
 }
 
 /// Set a usize scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned on 64-bit systems (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetUsize(o: obj_res, offset: usize, val: usize) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *usize = @ptrCast(@alignCast(ptr + offset));
@@ -716,6 +804,13 @@ pub inline fn ctorSetUsize(o: obj_res, offset: usize, val: usize) void {
 }
 
 /// Get a float64 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetFloat(o: b_obj_arg, offset: usize) f64 {
     const ptr = ctorScalarCptr(o);
     const aligned: *const f64 = @ptrCast(@alignCast(ptr + offset));
@@ -723,6 +818,13 @@ pub inline fn ctorGetFloat(o: b_obj_arg, offset: usize) f64 {
 }
 
 /// Set a float64 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 8-byte aligned (offset % 8 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetFloat(o: obj_res, offset: usize, val: f64) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *f64 = @ptrCast(@alignCast(ptr + offset));
@@ -730,6 +832,13 @@ pub inline fn ctorSetFloat(o: obj_res, offset: usize, val: f64) void {
 }
 
 /// Get a float32 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 4-byte aligned (offset % 4 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorGetFloat32(o: b_obj_arg, offset: usize) f32 {
     const ptr = ctorScalarCptr(o);
     const aligned: *const f32 = @ptrCast(@alignCast(ptr + offset));
@@ -737,6 +846,13 @@ pub inline fn ctorGetFloat32(o: b_obj_arg, offset: usize) f32 {
 }
 
 /// Set a float32 scalar field at the given byte offset.
+///
+/// ## Preconditions
+/// - `o` must be a valid, non-null constructor object
+/// - `offset` must be 4-byte aligned (offset % 4 == 0)
+/// - `offset` must be within the allocated scalar region
+///
+/// Violating these preconditions results in undefined behavior.
 pub inline fn ctorSetFloat32(o: obj_res, offset: usize, val: f32) void {
     const ptr = ctorScalarCptr(o);
     const aligned: *f32 = @ptrCast(@alignCast(ptr + offset));

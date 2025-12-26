@@ -757,19 +757,39 @@ test "ctor scalar: mixed object and scalar fields" {
 // ============================================================================
 
 test "refcount: circular references with manual cleanup" {
-    // Create two objects that reference each other
+    // This test demonstrates circular reference handling.
+    // In Lean's runtime, when an object's rc reaches 0, it automatically
+    // decrements the rc of all its field objects. However, with circular
+    // references, manual intervention is needed to break the cycle.
+    
     const obj1 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
     const obj2 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
 
-    lean.ctorSet(obj1, 0, obj2);
-    lean.lean_inc_ref(obj2);
-    lean.ctorSet(obj2, 0, obj1);
-    lean.lean_inc_ref(obj1);
+    // Create cycle: obj1 -> obj2 -> obj1
+    // Note: ctorSet does NOT auto-increment reference counts
+    lean.lean_inc_ref(obj2);  // Must manually inc before storing
+    lean.ctorSet(obj1, 0, obj2);  // obj2 now referenced by obj1
+    lean.lean_inc_ref(obj1);  // Must manually inc before storing
+    lean.ctorSet(obj2, 0, obj1);  // obj1 now referenced by obj2
 
+    // At this point: obj1 rc=2, obj2 rc=2 (each has one from alloc, one from being stored)
     try testing.expectEqual(@as(i32, 2), lean.objectRc(obj1));
     try testing.expectEqual(@as(i32, 2), lean.objectRc(obj2));
 
-    // Break cycle manually
+    // To properly cleanup a cycle, we must break it manually before final dec_ref
+    // Clear obj1's reference to obj2
+    lean.lean_dec_ref(lean.ctorGet(obj1, 0));  // dec_ref obj2
+    lean.ctorSet(obj1, 0, lean.boxUsize(0));   // Replace with scalar (no refcount)
+    
+    // Clear obj2's reference to obj1
+    lean.lean_dec_ref(lean.ctorGet(obj2, 0));  // dec_ref obj1
+    lean.ctorSet(obj2, 0, lean.boxUsize(0));   // Replace with scalar (no refcount)
+    
+    // Now both have rc=1 and no circular refs
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(obj1));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(obj2));
+    
+    // Final cleanup
     lean.lean_dec_ref(obj1);
     lean.lean_dec_ref(obj2);
 }
