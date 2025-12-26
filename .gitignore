@@ -7,8 +7,16 @@ lake-manifest.json
 
 # Zig
 zig-cache/
+.zig-cache/
 zig-out/
 
 # Editor
 .vscode/
 *.swp
+
+# Temporary/Backup
+*.backup
+*~
+
+# Build artifacts
+lean
