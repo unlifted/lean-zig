@@ -521,7 +521,9 @@ pub inline fn isScalar(o: b_obj_arg) bool {
 /// This includes both heap-allocated constructors and scalar constructors.
 ///
 /// ## Safety
-/// Assumes non-null input. Null input results in undefined behavior.
+/// For heap objects (non-scalars), assumes non-null input. The scalar check
+/// `isScalar(o)` safely handles any bit pattern. Null is only dereferenced
+/// when accessing heap object tags.
 pub inline fn isCtor(o: b_obj_arg) bool {
     if (isScalar(o)) return true;
     return objectTag(o) <= Tag.max_ctor;
@@ -644,8 +646,7 @@ pub inline fn ctorNumObjs(o: b_obj_arg) u8 {
 /// Scalar fields begin after the object fields.
 ///
 /// ## Precondition
-/// `o` must be a non-null constructor object. Passing null is a programmer
-/// error and will cause a panic.
+/// `o` must be a non-null constructor object.
 ///
 /// Note: Despite the nullable type `b_obj_arg`, null checking is intentionally
 /// performed at runtime to maintain API consistency with other Lean FFI functions.
@@ -664,8 +665,7 @@ pub fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
 /// Change the tag of a constructor (change variant).
 ///
 /// ## Precondition
-/// `o` must be a non-null constructor object. Passing null is a programmer
-/// error and will cause a panic.
+/// `o` must be a non-null constructor object.
 pub fn ctorSetTag(o: obj_res, tag: u8) void {
     const obj = o orelse @panic("ctorSetTag: null constructor object");
     const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));

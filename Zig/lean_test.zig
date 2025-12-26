@@ -995,7 +995,6 @@ test "perf: array access baseline" {
     const is_ci = std.process.hasEnvVarConstant("CI") or std.process.hasEnvVarConstant("GITHUB_ACTIONS");
     const threshold: u64 = if (is_ci) perf_array_threshold_ci else perf_array_threshold_local;
     try testing.expect(ns_per_op < threshold);
-    try testing.expect(sum >= 0);
 }
 
 test "perf: refcount operations baseline" {
