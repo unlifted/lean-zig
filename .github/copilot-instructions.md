@@ -87,6 +87,65 @@ test "descriptive name" {
 5. **Don't use after free**: Never access an object after `dec_ref`
 6. **Don't assume non-null**: Use `orelse` for all allocations
 7. **NEVER push directly to main**: ALL changes must go through Pull Requests with review
+8. **NEVER commit temporary files**: Planning docs, scratch notes, analysis files stay local
+9. **ALWAYS check CI after push**: Verify GitHub Actions pass before considering PR complete
+10. **Check unsigned comparisons**: `>= 0` is always true for `usize`, use `> 0` or remove check
+11. **Verify spelling**: Run spell check on comments and documentation
+12. **Count accurately**: Double-check all numeric claims (test counts, line numbers, etc.)
+
+## Pre-Commit Quality Checklist (MANDATORY)
+
+**Before EVERY commit, verify:**
+
+### Code Quality
+- [ ] **NO spelling errors** in comments, docs, or variable names
+- [ ] **NO meaningless checks** (e.g., `unsigned >= 0`, always-true conditions)
+- [ ] **NO unsigned underflow** checks that can't fail
+- [ ] **Consistent naming** (camelCase for Zig, snake_case for C bindings)
+- [ ] **Proper null handling** (`orelse` not `if/else` for optionals)
+
+### Documentation Consistency
+- [ ] **Test counts accurate** (verify with `git diff main file.zig | grep -c '^+test "'`)
+- [ ] **CHANGELOG matches reality** (test counts, API changes, all accurate)
+- [ ] **Performance targets documented** correctly (match actual thresholds in code)
+- [ ] **No contradictions** between docs and implementation
+- [ ] **Precondition sections complete** for all unsafe functions
+
+### Memory Safety
+- [ ] **Every allocation has matching `dec_ref`** in all paths (success AND error)
+- [ ] **`defer` used correctly** for cleanup
+- [ ] **No use-after-free** scenarios possible
+- [ ] **Type checks before casts** (isScalar, isCtor, etc.)
+
+### Testing
+- [ ] **All tests pass locally** (`zig build test`)
+- [ ] **Performance tests realistic** for CI environments
+- [ ] **Edge cases covered** (null, zero, boundary values)
+- [ ] **No test gaps** in new functionality
+
+### CI/CD
+- [ ] **CI passing on GitHub Actions** after every push
+- [ ] **No temporary files committed** (test-plan.md, notes.md, scratch.txt, etc.)
+- [ ] **Branch up to date** with remote before pushing
+
+## Post-Push Verification (MANDATORY)
+
+**After EVERY push to a PR branch:**
+
+```bash
+# Wait 30 seconds for CI to start
+sleep 30
+
+# Check CI status
+GH_PAGER=cat gh run list --branch <branch-name> --limit 1
+
+# If failed, get logs immediately
+GH_PAGER=cat gh run view <run-id> --log-failed
+
+# Fix issues and recommit
+```
+
+**Never wait for Copilot to catch mistakes. Catch them yourself first.**
 
 ## Contributing Guidelines
 
