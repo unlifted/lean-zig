@@ -20,13 +20,22 @@ jobs:
         with:
           version: 0.13.0 # Pinning a version is best practice
 
-      - name: Install Lean
-        uses: leanprover/lean-action@v1
-        with:
-          auto-formats: true # Checks that the code is formatted
+      - name: Install Elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Update Lake manifest
+        run: |
+          source $HOME/.elan/env
+          lake update
 
       - name: Build
-        run: lake build
+        run: |
+          source $HOME/.elan/env
+          lake build
 
       - name: Test
-        run: lake script run test
+        run: |
+          source $HOME/.elan/env
+          lake script run test

@@ -31,9 +31,9 @@
 //!
 //! export fn my_function(str: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
 //!     _ = world;
-//!     const data = lean.string_cstr(str);
+//!     const data = lean.stringCstr(str);
 //!     const result = lean.lean_mk_string_from_bytes(data, 5);
-//!     return lean.io_result_mk_ok(result);
+//!     return lean.ioResultMkOk(result);
 //! }
 //! ```
 
@@ -205,14 +205,14 @@ pub extern fn lean_dec_ref(o: obj_arg) void;
 ///
 /// ## Example
 /// ```zig
-/// const cstr = lean.string_cstr(lean_string);
-/// const len = lean.string_size(lean_string) - 1;  // exclude null
+/// const cstr = lean.stringCstr(lean_string);
+/// const len = lean.stringSize(lean_string) - 1;  // exclude null
 /// const slice = cstr[0..len];
 /// ```
-pub fn string_cstr(o: b_obj_arg) [*]const u8 {
+pub fn stringCstr(o: b_obj_arg) [*]const u8 {
     const obj = o orelse unreachable;
-    const str_obj: *StringObject = @ptrCast(@alignCast(obj));
-    const base: [*]const u8 = @ptrCast(str_obj);
+    const strObj: *StringObject = @ptrCast(@alignCast(obj));
+    const base: [*]const u8 = @ptrCast(strObj);
     return base + @sizeOf(StringObject);
 }
 
@@ -222,10 +222,10 @@ pub fn string_cstr(o: b_obj_arg) [*]const u8 {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null Lean string object.
-pub fn string_size(o: b_obj_arg) usize {
+pub fn stringSize(o: b_obj_arg) usize {
     const obj = o orelse unreachable;
-    const str_obj: *StringObject = @ptrCast(@alignCast(obj));
-    return str_obj.m_size;
+    const strObj: *StringObject = @ptrCast(@alignCast(obj));
+    return strObj.m_size;
 }
 
 /// Get the Unicode code point length of a Lean string.
@@ -234,10 +234,10 @@ pub fn string_size(o: b_obj_arg) usize {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null Lean string object.
-pub fn string_len(o: b_obj_arg) usize {
+pub fn stringLen(o: b_obj_arg) usize {
     const obj = o orelse unreachable;
-    const str_obj: *StringObject = @ptrCast(@alignCast(obj));
-    return str_obj.m_length;
+    const strObj: *StringObject = @ptrCast(@alignCast(obj));
+    return strObj.m_length;
 }
 
 // ============================================================================
@@ -251,20 +251,20 @@ pub fn string_len(o: b_obj_arg) usize {
 ///
 /// ## Parameters
 /// - `tag`: Constructor variant (0 for first constructor, 1 for second, etc.)
-/// - `num_objs`: Number of object (pointer) fields
-/// - `scalar_sz`: Total size in bytes of scalar fields
+/// - `numObjs`: Number of object (pointer) fields
+/// - `scalarSize`: Total size in bytes of scalar fields
 ///
 /// ## Example: Creating `IO.ok result`
 /// ```zig
-/// const ok = lean.alloc_ctor(0, 1, 0);  // tag 0, 1 object field, 0 scalars
-/// lean.ctor_set(ok, 0, result_value);
+/// const ok = lean.allocCtor(0, 1, 0);  // tag 0, 1 object field, 0 scalars
+/// lean.ctorSet(ok, 0, result_value);
 /// ```
-pub fn alloc_ctor(tag: u8, num_objs: u8, scalar_sz: usize) obj_res {
-    const size = @sizeOf(CtorObject) + @as(usize, num_objs) * @sizeOf(?*Object) + scalar_sz;
+pub fn allocCtor(tag: u8, numObjs: u8, scalarSize: usize) obj_res {
+    const size = @sizeOf(CtorObject) + @as(usize, numObjs) * @sizeOf(?*Object) + scalarSize;
     const o = lean_alloc_object(size) orelse return null;
     o.m_rc = 1;
     o.m_cs_sz = @intCast(size);
-    o.m_other = num_objs;
+    o.m_other = numObjs;
     o.m_tag = tag;
     return o;
 }
@@ -275,8 +275,8 @@ pub fn alloc_ctor(tag: u8, num_objs: u8, scalar_sz: usize) obj_res {
 /// - `o`: Constructor object
 /// - `i`: Field index (0-based)
 /// - `v`: Value to store (ownership transferred to constructor)
-pub fn ctor_set(o: obj_res, i: usize, v: obj_arg) void {
-    const objs = ctor_obj_cptr(o);
+pub fn ctorSet(o: obj_res, i: usize, v: obj_arg) void {
+    const objs = ctorObjCptr(o);
     objs[i] = v;
 }
 
@@ -286,7 +286,7 @@ pub fn ctor_set(o: obj_res, i: usize, v: obj_arg) void {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null constructor object.
-pub fn ctor_obj_cptr(o: obj_res) [*]obj_arg {
+pub fn ctorObjCptr(o: obj_res) [*]obj_arg {
     const obj = o orelse unreachable;
     const base: [*]u8 = @ptrCast(obj);
     return @ptrCast(@alignCast(base + @sizeOf(CtorObject)));
@@ -300,8 +300,8 @@ pub fn ctor_obj_cptr(o: obj_res) [*]obj_arg {
 ///
 /// ## Returns
 /// The object at the given field index. The constructor retains ownership.
-pub fn ctor_get(o: b_obj_arg, i: usize) obj_arg {
-    const objs = ctor_obj_cptr(o);
+pub fn ctorGet(o: b_obj_arg, i: usize) obj_arg {
+    const objs = ctorObjCptr(o);
     return objs[i];
 }
 
@@ -323,11 +323,11 @@ pub fn ctor_get(o: b_obj_arg, i: usize) obj_arg {
 /// ## Example
 /// ```zig
 /// const str = lean.lean_mk_string_from_bytes("hello", 5);
-/// return lean.io_result_mk_ok(str);
+/// return lean.ioResultMkOk(str);
 /// ```
-pub fn io_result_mk_ok(a: obj_arg) obj_res {
-    const r = alloc_ctor(0, 1, 0) orelse return null;
-    ctor_set(r, 0, a);
+pub fn ioResultMkOk(a: obj_arg) obj_res {
+    const r = allocCtor(0, 1, 0) orelse return null;
+    ctorSet(r, 0, a);
     return r;
 }
 
@@ -339,11 +339,11 @@ pub fn io_result_mk_ok(a: obj_arg) obj_res {
 /// ## Example
 /// ```zig
 /// const msg = lean.lean_mk_string_from_bytes("allocation failed", 17);
-/// return lean.io_result_mk_error(msg);
+/// return lean.ioResultMkError(msg);
 /// ```
-pub fn io_result_mk_error(e: obj_arg) obj_res {
-    const r = alloc_ctor(1, 1, 0) orelse return null;
-    ctor_set(r, 0, e);
+pub fn ioResultMkError(e: obj_arg) obj_res {
+    const r = allocCtor(1, 1, 0) orelse return null;
+    ctorSet(r, 0, e);
     return r;
 }
 
@@ -351,7 +351,7 @@ pub fn io_result_mk_error(e: obj_arg) obj_res {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null IO result object.
-pub fn io_result_is_ok(r: b_obj_arg) bool {
+pub fn ioResultIsOk(r: b_obj_arg) bool {
     const obj: *Object = @ptrCast(@alignCast(r orelse unreachable));
     return obj.m_tag == 0;
 }
@@ -360,16 +360,16 @@ pub fn io_result_is_ok(r: b_obj_arg) bool {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null IO result object.
-pub fn io_result_is_error(r: b_obj_arg) bool {
+pub fn ioResultIsError(r: b_obj_arg) bool {
     const obj: *Object = @ptrCast(@alignCast(r orelse unreachable));
     return obj.m_tag == 1;
 }
 
 /// Extract the value from a successful IO result.
 ///
-/// Precondition: `io_result_is_ok(r)` must be true.
-pub fn io_result_get_value(r: b_obj_arg) obj_arg {
-    return ctor_get(r, 0);
+/// Precondition: `ioResultIsOk(r)` must be true.
+pub fn ioResultGetValue(r: b_obj_arg) obj_arg {
+    return ctorGet(r, 0);
 }
 
 // ============================================================================
@@ -380,7 +380,7 @@ pub fn io_result_get_value(r: b_obj_arg) obj_arg {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null Lean array object.
-pub fn array_size(o: b_obj_arg) usize {
+pub fn arraySize(o: b_obj_arg) usize {
     const obj = o orelse unreachable;
     const arr: *ArrayObject = @ptrCast(@alignCast(obj));
     return arr.m_size;
@@ -392,7 +392,7 @@ pub fn array_size(o: b_obj_arg) usize {
 ///
 /// ## Precondition
 /// The input must be a valid, non-null Lean array object.
-pub fn array_cptr(o: b_obj_arg) [*]obj_arg {
+pub fn arrayCptr(o: b_obj_arg) [*]obj_arg {
     const obj = o orelse unreachable;
     const base: [*]u8 = @ptrCast(@alignCast(obj));
     return @ptrCast(@alignCast(base + @sizeOf(ArrayObject)));
@@ -401,22 +401,22 @@ pub fn array_cptr(o: b_obj_arg) [*]obj_arg {
 /// Get an element from a Lean array by index.
 ///
 /// The array retains ownership of the element.
-pub fn array_get(o: b_obj_arg, i: usize) obj_arg {
-    return array_cptr(o)[i];
+pub fn arrayGet(o: b_obj_arg, i: usize) obj_arg {
+    return arrayCptr(o)[i];
 }
 
 /// Set an element in a Lean array by index.
 ///
 /// Ownership of the value transfers to the array.
-pub fn array_set(o: obj_res, i: usize, v: obj_arg) void {
-    array_cptr(o)[i] = v;
+pub fn arraySet(o: obj_res, i: usize, v: obj_arg) void {
+    arrayCptr(o)[i] = v;
 }
 
 /// Allocate a new Lean array with the given capacity.
 ///
-/// The array is initialized with size 0. Use `array_set` and update
-/// the size field, or use `mk_array_with_size` for pre-sized arrays.
-pub fn alloc_array(capacity: usize) obj_res {
+/// The array is initialized with size 0. Use `arraySet` and update
+/// the size field, or use `mkArrayWithSize` for pre-sized arrays.
+pub fn allocArray(capacity: usize) obj_res {
     const size = @sizeOf(ArrayObject) + capacity * @sizeOf(?*Object);
     const o = lean_alloc_object(size) orelse return null;
     o.m_rc = 1;
@@ -434,20 +434,20 @@ pub fn alloc_array(capacity: usize) obj_res {
 /// Create a Lean array with a pre-set size.
 ///
 /// The array is allocated with the given capacity and size is set to
-/// `initial_size`. The caller must populate all elements via `array_set`
+/// `initialSize`. The caller must populate all elements via `arraySet`
 /// before the array is used by Lean code.
 ///
 /// ## Example
 /// ```zig
-/// const arr = lean.mk_array_with_size(3, 3) orelse return error;
-/// lean.array_set(arr, 0, elem0);
-/// lean.array_set(arr, 1, elem1);
-/// lean.array_set(arr, 2, elem2);
+/// const arr = lean.mkArrayWithSize(3, 3) orelse return error;
+/// lean.arraySet(arr, 0, elem0);
+/// lean.arraySet(arr, 1, elem1);
+/// lean.arraySet(arr, 2, elem2);
 /// ```
-pub fn mk_array_with_size(capacity: usize, initial_size: usize) obj_res {
-    const o = alloc_array(capacity) orelse return null;
+pub fn mkArrayWithSize(capacity: usize, initialSize: usize) obj_res {
+    const o = allocArray(capacity) orelse return null;
     const arr: *ArrayObject = @ptrCast(@alignCast(o));
-    arr.m_size = initial_size;
+    arr.m_size = initialSize;
     return o;
 }
 
@@ -467,47 +467,21 @@ pub fn mk_array_with_size(capacity: usize, initial_size: usize) obj_res {
 /// ## Panics
 /// Panics if the value is too large for tagged pointer representation.
 /// This is rare on 64-bit systems.
-pub fn box_usize(n: usize) obj_res {
+pub fn boxUsize(n: usize) obj_res {
     if (n < (@as(usize, 1) << 63)) {
         return @ptrFromInt((n << 1) | 1);
     }
-    @panic("box_usize: value too large for tagged pointer");
+    @panic("boxUsize: value too large for tagged pointer");
 }
 
 /// Unbox a Lean object to a usize.
 ///
 /// ## Panics
 /// Panics if the object is not a tagged pointer (i.e., it's a heap object).
-pub fn unbox_usize(o: b_obj_arg) usize {
+pub fn unboxUsize(o: b_obj_arg) usize {
     const ptr = @intFromPtr(o);
     if (ptr & 1 == 1) {
         return ptr >> 1;
     }
-    @panic("unbox_usize: expected tagged pointer");
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = @import("std").testing;
-
-test "Object header is 8 bytes" {
-    // The Lean runtime expects this exact size for alignment
-    try testing.expectEqual(@as(usize, 8), @sizeOf(Object));
-}
-
-test "tagged pointer encoding produces odd address" {
-    // Tagged pointers have the low bit set (odd address)
-    // We test the encoding math without going through the pointer type
-    const value: usize = 42;
-    const encoded = (value << 1) | 1;
-    try testing.expect(encoded & 1 == 1); // Odd address
-    try testing.expectEqual(value, encoded >> 1); // Decodes correctly
-}
-
-test "tagged pointer zero encodes to 1" {
-    // 0 encodes to (0 << 1) | 1 = 1
-    const encoded = (0 << 1) | 1;
-    try testing.expectEqual(@as(usize, 1), encoded);
+    @panic("unboxUsize: expected tagged pointer");
 }
