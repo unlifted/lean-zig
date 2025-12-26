@@ -505,6 +505,245 @@ pub inline fn objectOther(o: b_obj_arg) u8 {
 }
 
 // ============================================================================
+// Type Inspection Functions (Hot Path - Inlined)
+// ============================================================================
+
+/// Check if an object is a tagged scalar (not heap-allocated).
+///
+/// Tagged scalars have the low bit set (odd address) and represent
+/// small integers without heap allocation.
+pub inline fn isScalar(o: b_obj_arg) bool {
+    return (@intFromPtr(o) & 1) == 1;
+}
+
+/// Check if an object is a constructor.
+///
+/// This includes both heap-allocated constructors and scalar constructors.
+pub inline fn isCtor(o: b_obj_arg) bool {
+    if (isScalar(o)) return true;
+    return objectTag(o) <= Tag.max_ctor;
+}
+
+/// Check if an object is a string.
+pub inline fn isString(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.string;
+}
+
+/// Check if an object is an array.
+pub inline fn isArray(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.array;
+}
+
+/// Check if an object is a scalar array (ByteArray, FloatArray, etc.).
+pub inline fn isSarray(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.sarray;
+}
+
+/// Check if an object is a closure.
+pub inline fn isClosure(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.closure;
+}
+
+/// Check if an object is a thunk (lazy computation).
+pub inline fn isThunk(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.thunk;
+}
+
+/// Check if an object is a task (async computation).
+pub inline fn isTask(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.task;
+}
+
+/// Check if an object is a mutable reference.
+pub inline fn isRef(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.ref;
+}
+
+/// Check if an object is an external (foreign) object.
+pub inline fn isExternal(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.external;
+}
+
+/// Check if an object is a big integer (mpz).
+pub inline fn isMpz(o: b_obj_arg) bool {
+    if (isScalar(o)) return false;
+    return objectTag(o) == Tag.mpz;
+}
+
+/// Check if an object is exclusive (reference count == 1).
+///
+/// Exclusive objects can be mutated in-place safely.
+/// Scalars are always considered exclusive.
+pub inline fn isExclusive(o: b_obj_arg) bool {
+    if (isScalar(o)) return true;
+    return objectRc(o) == 1;
+}
+
+/// Check if an object is shared (reference count > 1).
+///
+/// Shared objects require copying before mutation.
+pub inline fn isShared(o: b_obj_arg) bool {
+    return !isExclusive(o);
+}
+
+/// Get the pointer tag (low bit).
+///
+/// Returns 1 for scalar (tagged pointer), 0 for heap object.
+pub inline fn ptrTag(o: b_obj_arg) usize {
+    return @intFromPtr(o) & 1;
+}
+
+// ============================================================================
+// Constructor Utility Functions
+// ============================================================================
+
+/// Get the number of object fields in a constructor.
+///
+/// This is stored in the m_other field of the object header.
+pub inline fn ctorNumObjs(o: b_obj_arg) u8 {
+    return objectOther(o);
+}
+
+/// Get a pointer to the scalar field region of a constructor.
+///
+/// Scalar fields begin after the object fields.
+pub fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
+    const obj = o orelse unreachable;
+    const base: [*]u8 = @ptrCast(obj);
+    const num_objs = ctorNumObjs(o);
+    return base + @sizeOf(CtorObject) + @as(usize, num_objs) * @sizeOf(?*Object);
+}
+
+/// Change the tag of a constructor (change variant).
+pub fn ctorSetTag(o: obj_res, tag: u8) void {
+    const obj = o orelse unreachable;
+    const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));
+    hdr.m_tag = tag;
+}
+
+/// Release (decrement) all object field references without freeing the constructor.
+///
+/// Used when reusing a constructor or implementing custom deallocation.
+pub fn ctorRelease(o: obj_res, num_objs: u8) void {
+    const objs = ctorObjCptr(o);
+    var i: usize = 0;
+    while (i < num_objs) : (i += 1) {
+        lean_dec_ref(objs[i]);
+    }
+}
+
+// ============================================================================
+// Constructor Scalar Field Accessors (Hot Path - Inlined)
+// ============================================================================
+
+// These functions provide typed access to scalar fields in constructors.
+// They take a byte offset to allow flexible layout of multiple scalar types.
+
+/// Get a uint8 scalar field at the given byte offset.
+pub inline fn ctorGetUint8(o: b_obj_arg, offset: usize) u8 {
+    const ptr = ctorScalarCptr(o);
+    return ptr[offset];
+}
+
+/// Set a uint8 scalar field at the given byte offset.
+pub inline fn ctorSetUint8(o: obj_res, offset: usize, val: u8) void {
+    const ptr = ctorScalarCptr(o);
+    ptr[offset] = val;
+}
+
+/// Get a uint16 scalar field at the given byte offset.
+pub inline fn ctorGetUint16(o: b_obj_arg, offset: usize) u16 {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const u16 = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a uint16 scalar field at the given byte offset.
+pub inline fn ctorSetUint16(o: obj_res, offset: usize, val: u16) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *u16 = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+/// Get a uint32 scalar field at the given byte offset.
+pub inline fn ctorGetUint32(o: b_obj_arg, offset: usize) u32 {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const u32 = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a uint32 scalar field at the given byte offset.
+pub inline fn ctorSetUint32(o: obj_res, offset: usize, val: u32) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *u32 = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+/// Get a uint64 scalar field at the given byte offset.
+pub inline fn ctorGetUint64(o: b_obj_arg, offset: usize) u64 {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const u64 = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a uint64 scalar field at the given byte offset.
+pub inline fn ctorSetUint64(o: obj_res, offset: usize, val: u64) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *u64 = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+/// Get a usize scalar field at the given byte offset.
+pub inline fn ctorGetUsize(o: b_obj_arg, offset: usize) usize {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const usize = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a usize scalar field at the given byte offset.
+pub inline fn ctorSetUsize(o: obj_res, offset: usize, val: usize) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *usize = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+/// Get a float64 scalar field at the given byte offset.
+pub inline fn ctorGetFloat(o: b_obj_arg, offset: usize) f64 {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const f64 = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a float64 scalar field at the given byte offset.
+pub inline fn ctorSetFloat(o: obj_res, offset: usize, val: f64) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *f64 = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+/// Get a float32 scalar field at the given byte offset.
+pub inline fn ctorGetFloat32(o: b_obj_arg, offset: usize) f32 {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *const f32 = @ptrCast(@alignCast(ptr + offset));
+    return aligned.*;
+}
+
+/// Set a float32 scalar field at the given byte offset.
+pub inline fn ctorSetFloat32(o: obj_res, offset: usize, val: f32) void {
+    const ptr = ctorScalarCptr(o);
+    const aligned: *f32 = @ptrCast(@alignCast(ptr + offset));
+    aligned.* = val;
+}
+
+// ============================================================================
 // Array Functions (Hot Path - Manually Inlined for Performance)
 // ============================================================================
 

@@ -389,3 +389,518 @@ test "mkArrayWithSize pre-initializes elements to boxed(0)" {
 // - Reference counting leaks
 //
 // It's worth implementing simple randomized tests even without a full framework.
+
+// ============================================================================
+// PHASE 1: Type Inspection Tests (Critical Safety)
+// ============================================================================
+
+test "type: isScalar detects tagged pointers" {
+    const scalar = lean.boxUsize(42);
+    try testing.expect(lean.isScalar(scalar));
+    try testing.expect(lean.isCtor(scalar)); // scalars are ctors too
+    try testing.expect(!lean.isString(scalar));
+    try testing.expect(!lean.isArray(scalar));
+}
+
+test "type: isCtor detects constructor objects" {
+    const ctor = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+    try testing.expect(lean.isCtor(ctor));
+    try testing.expect(!lean.isScalar(ctor));
+    try testing.expect(!lean.isString(ctor));
+}
+
+test "type: isString detects string objects" {
+    const str = lean.lean_mk_string("test");
+    defer lean.lean_dec_ref(str);
+    try testing.expect(lean.isString(str));
+    try testing.expect(!lean.isCtor(str));
+    try testing.expect(!lean.isArray(str));
+    try testing.expectEqual(lean.Tag.string, lean.objectTag(str));
+}
+
+test "type: isArray detects array objects" {
+    const arr = lean.allocArray(5) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(arr);
+    try testing.expect(lean.isArray(arr));
+    try testing.expect(!lean.isCtor(arr));
+    try testing.expect(!lean.isString(arr));
+    try testing.expectEqual(lean.Tag.array, lean.objectTag(arr));
+}
+
+test "type: type checks are mutually exclusive for heap objects" {
+    const ctor = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+    const arr = lean.allocArray(1) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(arr);
+    const str = lean.lean_mk_string("x");
+    defer lean.lean_dec_ref(str);
+
+    // Constructor is only ctor
+    try testing.expect(lean.isCtor(ctor));
+    try testing.expect(!lean.isArray(ctor));
+    try testing.expect(!lean.isString(ctor));
+
+    // Array is only array
+    try testing.expect(lean.isArray(arr));
+    try testing.expect(!lean.isCtor(arr));
+    try testing.expect(!lean.isString(arr));
+
+    // String is only string
+    try testing.expect(lean.isString(str));
+    try testing.expect(!lean.isCtor(str));
+    try testing.expect(!lean.isArray(str));
+}
+
+test "type: isExclusive true when rc == 1" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+    try testing.expect(lean.isExclusive(obj));
+    try testing.expect(!lean.isShared(obj));
+}
+
+test "type: isShared true when rc > 1" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    lean.lean_inc_ref(obj);
+    defer lean.lean_dec_ref(obj);
+
+    try testing.expect(lean.isShared(obj));
+    try testing.expect(!lean.isExclusive(obj));
+}
+
+test "type: isExclusive true for scalars" {
+    const scalar = lean.boxUsize(100);
+    try testing.expect(lean.isExclusive(scalar));
+}
+
+test "type: ptrTag distinguishes heap from scalar" {
+    const scalar = lean.boxUsize(42);
+    try testing.expectEqual(@as(usize, 1), lean.ptrTag(scalar));
+
+    const heap = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(heap);
+    try testing.expectEqual(@as(usize, 0), lean.ptrTag(heap));
+}
+
+test "type: objTag returns correct tag for constructors" {
+    const tests = [_]struct { tag: u8 }{
+        .{ .tag = 0 },
+        .{ .tag = 1 },
+        .{ .tag = 100 },
+        .{ .tag = 243 },
+    };
+
+    for (tests) |t| {
+        const obj = lean.allocCtor(t.tag, 0, 0) orelse return error.AllocationFailed;
+        defer lean.lean_dec_ref(obj);
+        try testing.expectEqual(t.tag, lean.objectTag(obj));
+    }
+}
+
+test "type: objTag returns correct tag for special types" {
+    const arr = lean.allocArray(1) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(arr);
+    try testing.expectEqual(lean.Tag.array, lean.objectTag(arr));
+
+    const str = lean.lean_mk_string("test");
+    defer lean.lean_dec_ref(str);
+    try testing.expectEqual(lean.Tag.string, lean.objectTag(str));
+}
+
+test "type: constructor tags within valid range" {
+    const ctor = lean.allocCtor(100, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+    try testing.expect(lean.objectTag(ctor) <= lean.Tag.max_ctor);
+}
+
+// ============================================================================
+// PHASE 1: Constructor Scalar Accessor Tests (Critical Safety)
+// ============================================================================
+
+test "ctor scalar: uint8 round-trip" {
+    const ctor = lean.allocCtor(0, 0, 1) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]u8{ 0, 1, 127, 255 };
+    for (values) |val| {
+        lean.ctorSetUint8(ctor, 0, val);
+        const retrieved = lean.ctorGetUint8(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: uint16 round-trip" {
+    const ctor = lean.allocCtor(0, 0, 2) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]u16{ 0, 1, 256, 32767, 65535 };
+    for (values) |val| {
+        lean.ctorSetUint16(ctor, 0, val);
+        const retrieved = lean.ctorGetUint16(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: uint32 round-trip" {
+    const ctor = lean.allocCtor(0, 0, 4) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]u32{ 0, 1, 65536, 2147483647, 4294967295 };
+    for (values) |val| {
+        lean.ctorSetUint32(ctor, 0, val);
+        const retrieved = lean.ctorGetUint32(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: uint64 round-trip" {
+    const ctor = lean.allocCtor(0, 0, 8) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]u64{
+        0,
+        1,
+        4294967296,
+        9223372036854775807, // Max i64
+        18446744073709551615, // Max u64
+    };
+    for (values) |val| {
+        lean.ctorSetUint64(ctor, 0, val);
+        const retrieved = lean.ctorGetUint64(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: usize round-trip" {
+    const ctor = lean.allocCtor(0, 0, @sizeOf(usize)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]usize{ 0, 1, 4294967296, @as(usize, 1) << 62 };
+    for (values) |val| {
+        lean.ctorSetUsize(ctor, 0, val);
+        const retrieved = lean.ctorGetUsize(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: float64 round-trip" {
+    const ctor = lean.allocCtor(0, 0, @sizeOf(f64)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]f64{
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        3.14159,
+        -3.14159,
+    };
+    for (values) |val| {
+        lean.ctorSetFloat(ctor, 0, val);
+        const retrieved = lean.ctorGetFloat(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: float64 special values" {
+    const ctor = lean.allocCtor(0, 0, @sizeOf(f64)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const inf = std.math.inf(f64);
+    lean.ctorSetFloat(ctor, 0, inf);
+    try testing.expect(std.math.isInf(lean.ctorGetFloat(ctor, 0)));
+
+    const ninf = -std.math.inf(f64);
+    lean.ctorSetFloat(ctor, 0, ninf);
+    try testing.expect(std.math.isNegativeInf(lean.ctorGetFloat(ctor, 0)));
+
+    const nan = std.math.nan(f64);
+    lean.ctorSetFloat(ctor, 0, nan);
+    try testing.expect(std.math.isNan(lean.ctorGetFloat(ctor, 0)));
+}
+
+test "ctor scalar: float32 round-trip" {
+    const ctor = lean.allocCtor(0, 0, @sizeOf(f32)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const values = [_]f32{ 0.0, 1.0, -1.0, 3.14, -3.14 };
+    for (values) |val| {
+        lean.ctorSetFloat32(ctor, 0, val);
+        const retrieved = lean.ctorGetFloat32(ctor, 0);
+        try testing.expectEqual(val, retrieved);
+    }
+}
+
+test "ctor scalar: multiple fields with different types" {
+    // Create: struct { id: u64, score: f64, flag: u8 }
+    const scalar_size = @sizeOf(u64) + @sizeOf(f64) + @sizeOf(u8);
+    const ctor = lean.allocCtor(0, 0, scalar_size) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const offset_id: usize = 0;
+    const offset_score: usize = @sizeOf(u64);
+    const offset_flag: usize = @sizeOf(u64) + @sizeOf(f64);
+
+    lean.ctorSetUint64(ctor, offset_id, 12345);
+    lean.ctorSetFloat(ctor, offset_score, 98.6);
+    lean.ctorSetUint8(ctor, offset_flag, 1);
+
+    try testing.expectEqual(@as(u64, 12345), lean.ctorGetUint64(ctor, offset_id));
+    try testing.expectEqual(@as(f64, 98.6), lean.ctorGetFloat(ctor, offset_score));
+    try testing.expectEqual(@as(u8, 1), lean.ctorGetUint8(ctor, offset_flag));
+}
+
+test "ctor scalar: aligned multi-field access" {
+    const ctor = lean.allocCtor(0, 0, 16) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    // Write u64 at offset 0 (aligned)
+    lean.ctorSetUint64(ctor, 0, 0xDEADBEEF);
+    // Write u64 at offset 8 (aligned)
+    lean.ctorSetUint64(ctor, 8, 0xCAFEBABE);
+
+    try testing.expectEqual(@as(u64, 0xDEADBEEF), lean.ctorGetUint64(ctor, 0));
+    try testing.expectEqual(@as(u64, 0xCAFEBABE), lean.ctorGetUint64(ctor, 8));
+}
+
+test "ctor utility: ctorNumObjs returns correct count" {
+    const tests = [_]struct { num_objs: u8 }{
+        .{ .num_objs = 0 },
+        .{ .num_objs = 1 },
+        .{ .num_objs = 10 },
+        .{ .num_objs = 255 },
+    };
+
+    for (tests) |t| {
+        const ctor = lean.allocCtor(0, t.num_objs, 0) orelse return error.AllocationFailed;
+        defer lean.lean_dec_ref(ctor);
+        try testing.expectEqual(t.num_objs, lean.ctorNumObjs(ctor));
+    }
+}
+
+test "ctor utility: ctorSetTag changes constructor variant" {
+    const ctor = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    try testing.expectEqual(@as(u8, 0), lean.objectTag(ctor));
+
+    lean.ctorSetTag(ctor, 5);
+    try testing.expectEqual(@as(u8, 5), lean.objectTag(ctor));
+
+    lean.ctorSetTag(ctor, 200);
+    try testing.expectEqual(@as(u8, 200), lean.objectTag(ctor));
+}
+
+test "ctor utility: ctorScalarCptr points to correct region" {
+    const ctor = lean.allocCtor(0, 2, 8) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const scalar_ptr = lean.ctorScalarCptr(ctor);
+    // Write directly via pointer
+    scalar_ptr[0] = 42;
+    scalar_ptr[7] = 99;
+
+    // Verify via typed accessor
+    try testing.expectEqual(@as(u8, 42), lean.ctorGetUint8(ctor, 0));
+    try testing.expectEqual(@as(u8, 99), lean.ctorGetUint8(ctor, 7));
+}
+
+test "ctor utility: ctorRelease decrements field references" {
+    const ctor = lean.allocCtor(0, 2, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    const field1 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    const field2 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+
+    lean.lean_inc_ref(field1);
+    lean.lean_inc_ref(field2);
+
+    lean.ctorSet(ctor, 0, field1);
+    lean.ctorSet(ctor, 1, field2);
+
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(field1));
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(field2));
+
+    lean.ctorRelease(ctor, 2);
+
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(field1));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(field2));
+
+    // Clean up
+    lean.lean_dec_ref(field1);
+    lean.lean_dec_ref(field2);
+}
+
+test "ctor scalar: mixed object and scalar fields" {
+    const ctor = lean.allocCtor(0, 2, @sizeOf(u64)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ctor);
+
+    // Set object fields
+    lean.ctorSet(ctor, 0, lean.boxUsize(100));
+    lean.ctorSet(ctor, 1, lean.boxUsize(200));
+
+    // Set scalar field
+    lean.ctorSetUint64(ctor, 0, 0xABCDEF);
+
+    // Verify object fields
+    try testing.expectEqual(@as(usize, 100), lean.unboxUsize(lean.ctorGet(ctor, 0)));
+    try testing.expectEqual(@as(usize, 200), lean.unboxUsize(lean.ctorGet(ctor, 1)));
+
+    // Verify scalar field
+    try testing.expectEqual(@as(u64, 0xABCDEF), lean.ctorGetUint64(ctor, 0));
+}
+
+// ============================================================================
+// PHASE 1: Deep Reference Counting Tests (Critical Safety)
+// ============================================================================
+
+test "refcount: circular references with manual cleanup" {
+    // Create two objects that reference each other
+    const obj1 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+    const obj2 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+
+    lean.ctorSet(obj1, 0, obj2);
+    lean.lean_inc_ref(obj2);
+    lean.ctorSet(obj2, 0, obj1);
+    lean.lean_inc_ref(obj1);
+
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(obj1));
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(obj2));
+
+    // Break cycle manually
+    lean.lean_dec_ref(obj1);
+    lean.lean_dec_ref(obj2);
+}
+
+test "refcount: many increments and decrements" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    // Increment many times
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        lean.lean_inc_ref(obj);
+    }
+
+    const rc = lean.objectRc(obj);
+    try testing.expectEqual(@as(i32, 1001), rc);
+
+    // Decrement back
+    i = 0;
+    while (i < 1000) : (i += 1) {
+        lean.lean_dec_ref(obj);
+    }
+
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(obj));
+}
+
+test "refcount: nested object graph" {
+    // Create tree: root -> [left, right], left -> [leaf1], right -> [leaf2]
+    const leaf1 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    const leaf2 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    const left = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+    const right = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+    const root = lean.allocCtor(0, 2, 0) orelse return error.AllocationFailed;
+
+    lean.ctorSet(left, 0, leaf1);
+    lean.ctorSet(right, 0, leaf2);
+    lean.ctorSet(root, 0, left);
+    lean.ctorSet(root, 1, right);
+
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(leaf1));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(leaf2));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(left));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(right));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(root));
+
+    // Clean up (will cascade)
+    lean.lean_dec_ref(root);
+}
+
+test "refcount: sharing object across multiple parents" {
+    const shared = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    const parent1 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+    const parent2 = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+
+    lean.lean_inc_ref(shared);
+    lean.lean_inc_ref(shared);
+
+    lean.ctorSet(parent1, 0, shared);
+    lean.ctorSet(parent2, 0, shared);
+
+    try testing.expectEqual(@as(i32, 3), lean.objectRc(shared));
+
+    lean.lean_dec_ref(parent1);
+    lean.lean_dec_ref(parent2);
+    lean.lean_dec_ref(shared);
+}
+
+// ============================================================================
+// PHASE 1: Performance Baseline Tests
+// ============================================================================
+
+test "perf: boxing round-trip baseline" {
+    var timer = try std.time.Timer.start();
+
+    const iterations = 1_000_000;
+    var i: usize = 0;
+    var sum: usize = 0;
+    while (i < iterations) : (i += 1) {
+        const boxed = lean.boxUsize(i);
+        sum +%= lean.unboxUsize(boxed);
+    }
+
+    const elapsed_ns = timer.read();
+    const ns_per_op = elapsed_ns / iterations;
+
+    std.debug.print("\nBoxing round-trip: {d}ns per operation\n", .{ns_per_op});
+    // Performance target: < 5ns (should be 1-2ns on modern hardware)
+    try testing.expect(ns_per_op < 10); // Relaxed for CI environments
+    try testing.expect(sum > 0); // Prevent optimization
+}
+
+test "perf: array access baseline" {
+    const arr = lean.mkArrayWithSize(1000, 1000) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(arr);
+
+    var timer = try std.time.Timer.start();
+
+    const iterations = 1_000_000;
+    var i: usize = 0;
+    var sum: usize = 0;
+    while (i < iterations) : (i += 1) {
+        const elem = lean.arrayGet(arr, i % 1000);
+        sum +%= lean.unboxUsize(elem);
+    }
+
+    const elapsed_ns = timer.read();
+    const ns_per_op = elapsed_ns / iterations;
+
+    std.debug.print("Array access: {d}ns per operation\n", .{ns_per_op});
+    // Performance target: < 5ns (should be 2-3ns)
+    try testing.expect(ns_per_op < 15); // Relaxed for CI
+    try testing.expect(sum >= 0);
+}
+
+test "perf: refcount operations baseline" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    var timer = try std.time.Timer.start();
+
+    const iterations = 10_000_000;
+    var i: usize = 0;
+    while (i < iterations) : (i += 1) {
+        lean.lean_inc_ref(obj);
+        lean.lean_dec_ref(obj);
+    }
+
+    const elapsed_ns = timer.read();
+    const ns_per_op = elapsed_ns / (iterations * 2);
+
+    std.debug.print("Refcount operation: {d}ns per inc/dec\n", .{ns_per_op});
+    // Performance target: < 2ns (should be 0.5ns)
+    try testing.expect(ns_per_op < 5); // Relaxed for CI
+}

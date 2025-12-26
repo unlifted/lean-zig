@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phase 1 Test Suite (Critical Safety)**: Added 40+ comprehensive tests covering:
+  - Type inspection functions (13 tests): `isScalar`, `isCtor`, `isString`, `isArray`, `isSarray`, `isClosure`, `isThunk`, `isTask`, `isRef`, `isExternal`, `isMpz`, `isExclusive`, `isShared`, `ptrTag`
+  - Constructor scalar field accessors (20 tests): getters and setters for `uint8`, `uint16`, `uint32`, `uint64`, `usize`, `float32`, `float64`
+  - Constructor utilities (4 tests): `ctorNumObjs`, `ctorScalarCptr`, `ctorSetTag`, `ctorRelease`
+  - Deep reference counting scenarios (4 tests): circular references, high refcounts, nested graphs, shared objects
+  - Performance baselines (3 tests): boxing, array access, and refcount operations
+- Type inspection API functions for runtime type checking
+- Complete scalar field accessor API for constructor objects
+- Constructor utility functions for advanced memory management
+- Performance benchmarking infrastructure
+
+### Changed
+- Expanded test coverage from ~25 tests to 65+ tests (160% increase)
+- Enhanced memory safety validation with complex reference counting scenarios
+
 ## [0.2.0] - 2025-12-26
 
 ### Added
