@@ -12,6 +12,24 @@ Thank you for your interest in contributing to `lean-zig`! We want this library 
     - Zig: Run `zig fmt Zig/lean.zig`.
 5.  **Test**: Run `lake script run test` to ensure everything works.
 6.  **Pull Request**: Submit a PR with a clear description of your changes.
+7.  **Code Review**: Wait for review and approval before merging.
+
+### CRITICAL: Never Push Directly to Main
+
+**ALL changes must go through Pull Requests**, including:
+- Bug fixes
+- New features
+- Documentation updates
+- Version releases
+- Configuration changes
+
+**Process:**
+1. Create a feature branch: `git checkout -b feature/my-change`
+2. Make changes and commit
+3. Push branch: `git push origin feature/my-change`
+4. Create PR on GitHub
+5. Wait for review and CI to pass
+6. Merge only after approval
 
 ## Code Style
 

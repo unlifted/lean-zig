@@ -81,11 +81,12 @@ test "descriptive name" {
 ## Common Mistakes to Avoid
 
 1. **Don't forget reference counting**: Every owned `obj_arg` must be `dec_ref`'d
-2. **Don't commit lake-manifest.json**: Libraries should let downstream resolve dependencies
+2. **Don't commit lake-manifest.json**: Libraries should let downstream resolve dependencies (EXCEPTION: We do commit it for Reservoir indexing)
 3. **Don't mix naming conventions**: Zig functions use camelCase, C bindings use snake_case
 4. **Don't unbox without checking**: Always verify `isScalar` before calling `unboxUsize`
 5. **Don't use after free**: Never access an object after `dec_ref`
 6. **Don't assume non-null**: Use `orelse` for all allocations
+7. **NEVER push directly to main**: ALL changes must go through Pull Requests with review
 
 ## Contributing Guidelines
 
@@ -141,6 +142,22 @@ Consider which version component should be incremented (see [CONTRIBUTING.md](..
 - [ ] **CHANGELOG.md updated** under `[Unreleased]` section
 - [ ] Documentation updated (api.md, usage.md, README.md if needed)
 - [ ] Versioning impact considered and noted in PR description
+
+### Git Workflow (CRITICAL)
+
+**NEVER commit directly to main branch. ALL changes require Pull Requests.**
+
+1. **Create feature branch**: `git checkout -b feature/description`
+2. **Commit changes**: `git commit -am "Description"`
+3. **Push branch**: `git push origin feature/description`
+4. **Create PR**: Use GitHub UI or `gh pr create`
+5. **Wait for review**: Do not merge without approval
+6. **After approval**: Merge via GitHub UI
+
+**DO NOT USE:**
+- `git push origin main`
+- Direct commits to main
+- Force pushes to main
 
 ### After Pushing to PR Branch
 **ALWAYS verify CI passes after pushing changes to a PR branch:**
