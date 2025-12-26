@@ -232,8 +232,7 @@ test "string has correct tag" {
     const str = lean.lean_mk_string("test");
     defer lean.lean_dec_ref(str);
 
-    const obj = str orelse unreachable;
-    try testing.expectEqual(lean.Tag.string, obj.m_tag);
+    try testing.expectEqual(lean.Tag.string, str.m_tag);
 }
 
 // ============================================================================

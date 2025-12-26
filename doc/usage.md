@@ -492,4 +492,4 @@ moreLinkArgs := #["-L./build", "-lyour_code", "-L.lake/build/lib", "-lleancpp"]
 
 - See [API Reference](api.md) for complete function documentation
 - See [Design](design.md) for architectural details
-- Check the test suite in `Zig/lean.zig` for more examples
+- Check the test suite in `Zig/lean_test.zig` for more examples
