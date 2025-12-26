@@ -1,0 +1,3 @@
+-- Placeholder file for Lake package structure.
+-- This package provides Zig bindings for the Lean 4 runtime FFI.
+-- The actual implementation is in Zig/lean.zig.
