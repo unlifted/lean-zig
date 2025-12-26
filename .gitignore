@@ -3,6 +3,7 @@ lake-packages/
 .lake/
 build/
 lean_packages/
+lake-manifest.json
 
 # Zig
 zig-cache/

@@ -25,6 +25,9 @@ jobs:
         with:
           auto-formats: true # Checks that the code is formatted
 
+      - name: Update Lake manifest
+        run: lake update
+
       - name: Build
         run: lake build
 
