@@ -250,8 +250,8 @@ test "ioResultMkOk creates success result" {
 }
 
 test "ioResultMkError creates error result" {
-    const err_msg = lean.lean_mk_string("something failed");
-    const result = lean.ioResultMkError(err_msg) orelse return error.AllocationFailed;
+    // Pass string directly to avoid extra reference that would leak
+    const result = lean.ioResultMkError(lean.lean_mk_string("something failed")) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(result);
 
     try testing.expect(lean.ioResultIsError(result));
@@ -263,10 +263,47 @@ test "IO result has correct tag" {
     defer lean.lean_dec_ref(ok_result);
     try testing.expectEqual(@as(u8, 0), lean.objectTag(ok_result));
 
-    const err_msg = lean.lean_mk_string("error");
-    const err_result = lean.ioResultMkError(err_msg) orelse return error.AllocationFailed;
+    // Pass string directly to avoid extra reference that would leak
+    const err_result = lean.ioResultMkError(lean.lean_mk_string("error")) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(err_result);
     try testing.expectEqual(@as(u8, 1), lean.objectTag(err_result));
+}
+
+test "allocCtor pre-initializes object fields to boxed(0)" {
+    // Allocate constructor with 3 object fields
+    const obj = lean.allocCtor(0, 3, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    // Verify all fields are initialized to boxed(0), not null
+    const field0 = lean.ctorGet(obj, 0);
+    const field1 = lean.ctorGet(obj, 1);
+    const field2 = lean.ctorGet(obj, 2);
+
+    // Check they're tagged pointers (odd address = scalar)
+    try testing.expectEqual(@as(usize, 1), @intFromPtr(field0) & 1);
+    try testing.expectEqual(@as(usize, 1), @intFromPtr(field1) & 1);
+    try testing.expectEqual(@as(usize, 1), @intFromPtr(field2) & 1);
+    
+    // Verify they decode to 0
+    try testing.expectEqual(@as(usize, 0), lean.unboxUsize(field0));
+    try testing.expectEqual(@as(usize, 0), lean.unboxUsize(field1));
+    try testing.expectEqual(@as(usize, 0), lean.unboxUsize(field2));
+}
+
+test "mkArrayWithSize pre-initializes elements to boxed(0)" {
+    // Create array with initial size but don't set elements
+    const arr = lean.mkArrayWithSize(5, 10) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(arr);
+
+    // Verify all elements are initialized to boxed(0), not null
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        const elem = lean.arrayGet(arr, i);
+        // Check it's a tagged pointer (odd address = scalar)
+        try testing.expectEqual(@as(usize, 1), @intFromPtr(elem) & 1);
+        // Verify it decodes to 0
+        try testing.expectEqual(@as(usize, 0), lean.unboxUsize(elem));
+    }
 }
 
 // ============================================================================

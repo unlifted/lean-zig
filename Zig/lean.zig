@@ -251,10 +251,10 @@ pub inline fn lean_dec_ref(o: obj_arg) void {
     if (hdr.m_rc > 1) {
         hdr.m_rc -= 1;
     } else if (hdr.m_rc != 0) {
-        // Cold path: refcount == 1 or special case, need to free
+        // Cold path: refcount == 1 or multi-threaded, need to free or use atomics
         lean_dec_ref_cold(o);
     }
-    // If m_rc == 0, it's a scalar/shared object, do nothing
+    // If m_rc == 0, it's a persistent/immortal object that must never be freed, so do nothing
 }
 
 // ============================================================================
@@ -338,7 +338,9 @@ pub fn allocCtor(tag: u8, numObjs: u8, scalarSize: usize) obj_res {
     const o = lean_alloc_object(size) orelse return null;
     const hdr: *ObjectHeader = @ptrCast(@alignCast(o));
     hdr.m_rc = 1;
-    hdr.m_cs_sz = if (size <= 65535) @intCast(size) else 0; // 0 for large objects
+    // m_cs_sz is u16 (max 65535). For larger objects, store 0 to signal that
+    // the runtime must retrieve size through an alternate mechanism.
+    hdr.m_cs_sz = if (size <= 65535) @intCast(size) else 0;
     hdr.m_other = numObjs;
     hdr.m_tag = tag;
 

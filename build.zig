@@ -57,13 +57,8 @@ pub fn build(b: *std.Build) void {
     // Step 5: Create a static library artifact (optional, for external linking)
     const lib = b.addLibrary(.{
         .name = "lean-zig",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("Zig/lean.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = lean_zig_module,
     });
-    lib.root_module.addImport("lean_raw", lean_raw_module);
 
     // Link against Lean runtime
     lib.linkLibC();
