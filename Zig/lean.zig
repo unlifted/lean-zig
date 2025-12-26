@@ -647,6 +647,9 @@ pub inline fn ctorNumObjs(o: b_obj_arg) u8 {
 /// `o` must be a non-null constructor object. Passing null is a programmer
 /// error and will cause a panic.
 ///
+/// Note: Despite the nullable type `b_obj_arg`, null checking is intentionally
+/// performed at runtime to maintain API consistency with other Lean FFI functions.
+///
 /// ## Safety
 /// The returned pointer may not be properly aligned for larger types if preceded
 /// by an odd number of object fields. Use typed accessors (ctorGetUint*, etc.)
@@ -660,7 +663,9 @@ pub fn ctorScalarCptr(o: b_obj_arg) [*]u8 {
 
 /// Change the tag of a constructor (change variant).
 ///
-/// Precondition: `o` must be a non-null constructor object.
+/// ## Precondition
+/// `o` must be a non-null constructor object. Passing null is a programmer
+/// error and will cause a panic.
 pub fn ctorSetTag(o: obj_res, tag: u8) void {
     const obj = o orelse @panic("ctorSetTag: null constructor object");
     const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));

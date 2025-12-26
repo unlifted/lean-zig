@@ -2,6 +2,15 @@ const std = @import("std");
 const testing = std.testing;
 const lean = @import("lean.zig");
 
+// Performance test thresholds (nanoseconds per operation)
+// CI environments have higher thresholds due to variable performance
+const perf_boxing_threshold_local: u64 = 10;
+const perf_boxing_threshold_ci: u64 = 15;
+const perf_array_threshold_local: u64 = 15;
+const perf_array_threshold_ci: u64 = 20;
+const perf_refcount_threshold_local: u64 = 5;
+const perf_refcount_threshold_ci: u64 = 10;
+
 // Note: lean.zig currently provides a minimal API focused on core functionality.
 // Many functions from a full Lean C API wrapper are not yet implemented.
 
@@ -397,7 +406,7 @@ test "mkArrayWithSize pre-initializes elements to boxed(0)" {
 test "type: isScalar detects tagged pointers" {
     const scalar = lean.boxUsize(42);
     try testing.expect(lean.isScalar(scalar));
-    try testing.expect(lean.isCtor(scalar)); // In Lean's runtime, tagged pointer scalars are treated as a special case of constructors
+    try testing.expect(lean.isCtor(scalar)); // Tagged scalars are treated as constructors in Lean's runtime
     try testing.expect(!lean.isString(scalar));
     try testing.expect(!lean.isArray(scalar));
 }
@@ -959,7 +968,7 @@ test "perf: boxing round-trip baseline" {
     // Performance target: < 5ns (should be 1-2ns on modern hardware)
     // Relaxed for CI environments which may have variable performance
     const is_ci = std.process.hasEnvVarConstant("CI") or std.process.hasEnvVarConstant("GITHUB_ACTIONS");
-    const threshold: u64 = if (is_ci) 15 else 10;
+    const threshold: u64 = if (is_ci) perf_boxing_threshold_ci else perf_boxing_threshold_local;
     try testing.expect(ns_per_op < threshold);
     try testing.expect(sum > 0); // Prevent optimization
 }
@@ -984,7 +993,7 @@ test "perf: array access baseline" {
     std.debug.print("Array access: {d}ns per operation\n", .{ns_per_op});
     // Performance target: < 5ns (should be 2-3ns)
     const is_ci = std.process.hasEnvVarConstant("CI") or std.process.hasEnvVarConstant("GITHUB_ACTIONS");
-    const threshold: u64 = if (is_ci) 20 else 15;
+    const threshold: u64 = if (is_ci) perf_array_threshold_ci else perf_array_threshold_local;
     try testing.expect(ns_per_op < threshold);
     try testing.expect(sum >= 0);
 }
@@ -1008,6 +1017,6 @@ test "perf: refcount operations baseline" {
     std.debug.print("Refcount operation: {d}ns per inc/dec\n", .{ns_per_op});
     // Performance target: < 2ns (should be 0.5ns)
     const is_ci = std.process.hasEnvVarConstant("CI") or std.process.hasEnvVarConstant("GITHUB_ACTIONS");
-    const threshold: u64 = if (is_ci) 10 else 5;
+    const threshold: u64 = if (is_ci) perf_refcount_threshold_ci else perf_refcount_threshold_local;
     try testing.expect(ns_per_op < threshold);
 }
