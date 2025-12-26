@@ -585,7 +585,7 @@ pub fn mkArrayWithSize(capacity: usize, initialSize: usize) obj_res {
     const o = allocArray(capacity) orelse return null;
     const arr: *ArrayObject = @ptrCast(@alignCast(o));
     arr.m_size = initialSize;
-    
+
     // Initialize all elements to boxed scalar 0 for safety
     // Scalar values don't need reference counting, so this is safe
     const elems = arrayCptr(o);
@@ -594,7 +594,7 @@ pub fn mkArrayWithSize(capacity: usize, initialSize: usize) obj_res {
     while (i < initialSize) : (i += 1) {
         elems[i] = scalar_zero;
     }
-    
+
     return o;
 }
 
