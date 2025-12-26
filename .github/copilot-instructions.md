@@ -96,6 +96,30 @@ test "descriptive name" {
 - Error paths release resources properly
 - Documentation updated (README, api.md, usage.md if API changes)
 
+### After Pushing to PR Branch
+**ALWAYS verify CI passes after pushing changes to a PR branch:**
+```bash
+# Wait a moment for CI to start, then check status
+GH_PAGER=cat gh run list --branch <branch-name> --limit 1
+
+# If failed, get logs
+GH_PAGER=cat gh run view <run-id> --log-failed
+```
+
+### Using GitHub CLI (gh)
+**Always disable the pager** to avoid interactive mode that requires 'q' to exit:
+```bash
+# Set pager to cat for all gh commands
+GH_PAGER=cat gh pr view 1
+GH_PAGER=cat gh run list
+GH_PAGER=cat gh api ...
+```
+
+Or set it permanently in your environment:
+```bash
+export GH_PAGER=cat
+```
+
 ### Code Review Focus
 1. Memory safety (reference counting, null checks)
 2. Type safety (proper use of `isScalar`, `isCtor`, etc.)

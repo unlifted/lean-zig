@@ -23,7 +23,7 @@ jobs:
       - name: Install Lean
         uses: leanprover/lean-action@v1
         with:
-          auto-formats: true # Checks that the code is formatted
+          auto-config: false # Disable auto-config since we're a library without manifest
 
       - name: Update Lake manifest
         run: lake update
