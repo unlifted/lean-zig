@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2025-12-27
+
+**Complete Core Runtime FFI Coverage** - All Lean 4 runtime object types now fully supported with comprehensive test coverage.
+
+### Added
 - **Phase 1 Test Suite (Critical Safety)**: Added 42 comprehensive tests covering:
   - Type inspection functions (15 tests): `isScalar`, `isCtor`, `isString`, `isArray`, `isSarray`, `isClosure`, `isThunk`, `isTask`, `isRef`, `isExternal`, `isMpz`, `isExclusive`, `isShared`, `ptrTag`
   - Constructor scalar field accessors (13 tests): getters and setters for `uint8`, `uint16`, `uint32`, `uint64`, `usize`, `float32`, `float64`
@@ -102,6 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build system integration via `build.zig`
 - MIT license
 
-[Unreleased]: https://github.com/efvincent/lean-zig/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/efvincent/lean-zig/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/efvincent/lean-zig/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/efvincent/lean-zig/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/efvincent/lean-zig/releases/tag/v0.1.0

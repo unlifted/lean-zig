@@ -19,5 +19,11 @@ zig-out/
 *.backup
 *~
 
+# Planning and temporary work (should not be committed)
+.planning/
+*-plan.md
+*-notes.md
+scratch/
+
 # Build artifacts
 lean

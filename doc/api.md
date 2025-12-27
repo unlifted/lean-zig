@@ -59,6 +59,30 @@ Homogeneous primitive array (ByteArray, FloatArray, etc.).
 - `m_capacity: usize` - Maximum elements
 - `m_elem_size: usize` - Bytes per element
 
+#### `ThunkObject`
+Lazy computation with cached result.
+
+**Fields:**
+- `m_header: Object`
+- `m_value: ?*anyopaque` - Cached result (null until first evaluation, atomic in C)
+- `m_closure: ?*anyopaque` - Closure to evaluate (atomic in C)
+
+**Thread Safety:** Value and closure fields use atomic operations in the Lean runtime for concurrent evaluation.
+
+#### `RefObject`
+Mutable reference for ST (state thread) monad.
+
+**Fields:**
+- `m_header: Object`
+- `m_value: obj_arg` - Current value
+
+**Usage:** References provide mutable cells in the ST monad for single-threaded local mutation.
+
+#### `ObjectHeader`
+**Visibility:** Public (as of Phase 5) for advanced memory management.
+
+Direct access to the object header allows manual initialization of specialized object types (e.g., RefObject in tests). Use with caution - improper header initialization can cause runtime crashes.
+
 ### Ownership Types
 
 - **`obj_arg`** - Owned pointer, caller transfers ownership
@@ -423,88 +447,297 @@ lean.closureSet(closure, 0, first_arg);
 
 ## Thunks
 
-Thunks represent lazy computations evaluated on first access.
+Thunks represent lazy computations evaluated on first access. Value is computed once and cached for subsequent calls.
+
+### Object Structure
+
+See [`ThunkObject`](#thunkobject) in Core Types.
 
 ### Creation
 
-- **`lean_thunk_pure(v)`** → `obj_res` - Create already-evaluated thunk
+#### `lean_thunk_pure(v: obj_arg) obj_res`
+Create a thunk with pre-evaluated value (no closure needed).
 
-### Evaluation
+**Parameters:**
+- `v` - Value to cache (takes ownership)
 
-| Function | Description |
-|----------|-------------|
-| `lean_thunk_get_own(o)` → `obj_res` | Force evaluation (transfers ownership) |
-| `thunkGet(o)` → `obj_arg` | Get value (borrowed) |
+**Returns:**
+- Thunk object with cached value, or null on allocation failure
+
+**Performance:** Inline function, zero-cost abstraction.
 
 **Example:**
 ```zig
-// Create lazy computation
-const thunk = create_lazy_computation();
-
-// Force evaluation
-const result = lean.lean_thunk_get_own(thunk);
-defer lean.lean_dec_ref(result);
+const value = lean.boxUsize(42);
+const thunk = lean.lean_thunk_pure(value) orelse return error.AllocationFailed;
+defer lean.lean_dec_ref(thunk);
 ```
+
+### Evaluation
+
+#### `thunkGet(t: b_obj_arg) obj_arg`
+Get cached value (borrowed reference).
+
+**Preconditions:**
+- Input must be non-null thunk object
+- Passing null triggers unreachable panic
+
+**Behavior:**
+- **Fast path:** If value cached, returns immediately (inline)
+- **Slow path:** If not evaluated, forwards to `lean_thunk_get_core` for thread-safe evaluation
+
+**Returns:** Borrowed reference to cached value
+
+**Performance:** Inline fast path, zero overhead for cached values.
+
+**Example:**
+```zig
+const value = lean.thunkGet(thunk);
+if (lean.isScalar(value)) {
+    const n = lean.unboxUsize(value);
+    // Use n...
+}
+```
+
+#### `lean_thunk_get_own(t: obj_arg) obj_res`
+Get cached value with ownership transfer.
+
+**Parameters:**
+- `t` - Thunk object (takes ownership)
+
+**Returns:**
+- Owned reference to cached value (increments refcount)
+
+**Behavior:**
+- Evaluates thunk if not cached
+- Increments value refcount before returning
+- Caller must `dec_ref` returned value
+
+**Performance:** Inline implementation.
+
+**Example:**
+```zig
+const value = lean.lean_thunk_get_own(thunk);
+defer lean.lean_dec_ref(value);
+// thunk was consumed, don't dec_ref it
+```
+
+#### `lean_thunk_get_core(t: b_obj_arg) obj_arg`
+Forwarded to Lean runtime for thread-safe evaluation.
+
+**Usage:** Called automatically by `thunkGet` when value not cached. Rarely called directly.
 
 ---
 
 ## Tasks
 
-Tasks represent asynchronous computations.
+Tasks represent asynchronous computations managed by Lean's thread pool.
 
-### Core Functions
+### Core Functions (Forwarded to Runtime)
 
-| Function | Description |
-|----------|-------------|
-| `lean_task_spawn_core(fn, prio, async_mode)` | Spawn task with options |
-| `lean_task_get_own(t)` → `obj_res` | Wait for result (blocks) |
-| `lean_task_map_core(t, f, prio, async)` | Map function over result |
-| `lean_task_bind_core(t, f, prio, async)` | Monadic bind (sequence) |
+All task functions require full Lean runtime initialization.
 
-### Simplified Wrappers
+#### `lean_task_spawn_core(fn: obj_arg, prio: c_uint, async: u8) obj_res`
+Spawn asynchronous task.
+
+**Parameters:**
+- `fn` - Closure to execute (takes ownership)
+- `prio` - Priority (0 = normal, higher = more important)
+- `async` - Keep-alive mode: 0=wait for result before exit, 1=background
+
+**Returns:** Task object, or null on failure
+
+**Thread Safety:** Fully thread-safe via Lean runtime.
+
+#### `lean_task_get(t: b_obj_arg) obj_arg`
+Wait for task result (borrowed).
+
+**Blocks** until task completes.
+
+**Returns:** Borrowed reference to result
+
+#### `lean_task_get_own(t: obj_arg) obj_res`
+Wait for task result (owned).
+
+**Parameters:**
+- `t` - Task object (takes ownership)
+
+**Blocks** until task completes.
+
+**Returns:** Owned reference to result (caller must `dec_ref`)
+
+#### `lean_task_map_core(t: obj_arg, f: obj_arg, prio: c_uint, async: u8) obj_res`
+Map function over task result.
+
+**Parameters:**
+- `t` - Task (takes ownership)
+- `f` - Mapping function closure (takes ownership)
+- `prio` - Priority for mapped task
+- `async` - Keep-alive mode
+
+**Returns:** New task computing `f(result of t)`
+
+**Chaining:** Allows building computation pipelines.
+
+#### `lean_task_bind_core(t: obj_arg, f: obj_arg, prio: c_uint, async: u8) obj_res`
+Monadic bind for task sequencing.
+
+**Parameters:**
+- `t` - Task (takes ownership)
+- `f` - Function returning task closure (takes ownership)
+- `prio` - Priority
+- `async` - Keep-alive mode
+
+**Returns:** Task that waits for `t`, then spawns task from `f(result)`
+
+**Usage:** Complex async workflows with dependent tasks.
+
+### Convenience Wrappers
 
 Default priority=0, async=true:
 
-- **`taskSpawn(fn_closure)`** → `obj_res` - Spawn async task
-- **`taskMap(t, f)`** → `obj_res` - Map function over task
-- **`taskBind(t, f)`** → `obj_res` - Bind/chain tasks
+#### `taskSpawn(fn: obj_arg) obj_res`
+Spawn task with default options.
 
-**Example:**
+**Equivalent to:** `lean_task_spawn_core(fn, 0, 1)`
+
+#### `taskMap(t: obj_arg, f: obj_arg) obj_res`
+Map function with default options.
+
+**Equivalent to:** `lean_task_map_core(t, f, 0, 1)`
+
+#### `taskBind(t: obj_arg, f: obj_arg) obj_res`
+Bind with default options.
+
+**Equivalent to:** `lean_task_bind_core(t, f, 0, 1)`
+
+### Complete Example
+
 ```zig
 // Spawn async computation
-const task = lean.taskSpawn(computation_closure);
+const task1 = lean.taskSpawn(computation_closure);
 
-// Map result
-const mapped = lean.taskMap(task, transform_fn);
+// Chain another task
+const task2 = lean.taskMap(task1, transform_fn);
 
-// Wait for result
-const result = lean.lean_task_get_own(mapped);
+// Sequence dependent task
+const task3 = lean.taskBind(task2, dependent_fn);
+
+// Wait for final result
+const result = lean.lean_task_get_own(task3);
 defer lean.lean_dec_ref(result);
+
+// Process result...
 ```
+
+**Note:** Task testing requires full Lean IO runtime initialization. See test suite for API validation examples.
 
 ---
 
 ## References
 
-Mutable references for the ST (state thread) monad.
+Mutable references for the ST (state thread) monad. Provides single-threaded local mutation.
 
-### Access
+### Object Structure
 
-| Function | Description |
-|----------|-------------|
-| `refGet(o)` → `obj_arg` | Get current value (borrowed) |
-| `refSet(o, v)` | Set new value (dec_refs old value) |
+See [`RefObject`](#refobject) in Core Types.
+
+### Access Functions
+
+#### `refGet(r: b_obj_arg) obj_arg`
+Get current value (borrowed).
+
+**Parameters:**
+- `r` - Reference object (borrowed)
+
+**Returns:** Borrowed reference to current value (may be null)
+
+**Performance:** Inline function, direct pointer access.
+
+**Preconditions:**
+- Input must be valid RefObject
 
 **Example:**
 ```zig
-// In ST context
 const ref = get_some_ref();
 const current = lean.refGet(ref);
 
-// Mutate
-const new_value = compute_new_value(current);
-lean.refSet(ref, new_value);
+if (current) |value| {
+    // Process non-null value
+    if (lean.isScalar(value)) {
+        const n = lean.unboxUsize(value);
+    }
+}
 ```
+
+#### `refSet(r: b_obj_arg, v: obj_arg) void`
+Set new value (with cleanup).
+
+**Parameters:**
+- `r` - Reference object (borrowed)
+- `v` - New value (takes ownership, may be null)
+
+**Behavior:**
+1. Retrieves old value from reference
+2. If old value non-null, calls `lean_dec_ref` on it
+3. Stores new value in reference
+
+**Memory Safety:** Automatically cleans up old value to prevent leaks.
+
+**Performance:** Inline function.
+
+**Example:**
+```zig
+// Initial value
+lean.refSet(ref, lean.boxUsize(100));
+
+// Update (old value automatically dec_ref'd)
+lean.refSet(ref, lean.boxUsize(200));
+
+// Set to null (valid for optional refs)
+lean.refSet(ref, null);
+
+// Restore value
+lean.refSet(ref, lean.boxUsize(300));
+```
+
+### Complete Example: Counter
+
+```zig
+export fn incrementCounter(ref: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Get current value
+    const current = lean.refGet(ref);
+    const n = if (current) |val| 
+        lean.unboxUsize(val) 
+    else 
+        0;
+    
+    // Increment and update
+    const new_value = lean.boxUsize(n + 1);
+    lean.refSet(ref, new_value);
+    
+    // Return unit
+    const unit = lean.allocCtor(0, 0, 0) orelse {
+        return lean.ioResultMkError(lean.lean_mk_string("alloc failed"));
+    };
+    return lean.ioResultMkOk(unit);
+}
+```
+
+### ST Monad Integration
+
+References are typically created and managed by Lean's ST monad:
+
+```lean
+def example : ST RealWorld Nat := do
+  let r ← ST.mkRef 10  -- Creates RefObject internally
+  r.modify (· + 5)     -- Calls refGet + refSet via FFI
+  r.get                -- Calls refGet via FFI
+```
+
+The Zig FFI operates on the underlying `RefObject` pointers.
 
 ---
 
