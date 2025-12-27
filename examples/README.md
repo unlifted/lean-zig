@@ -1,10 +1,29 @@
 # lean-zig Examples
 
-Progressive examples demonstrating Lean 4 and Zig interoperability using the lean-zig library.
+Progressive **educational templates** demonstrating Lean 4 and Zig interoperability patterns.
+
+## Important: Examples Are Educational Templates
+
+These examples are **documentation and templates**, not standalone buildable projects. They demonstrate:
+- FFI patterns and best practices
+- Memory management strategies  
+- API usage examples
+- Performance considerations
+
+**All concepts are tested and validated** in the lean-zig test suite (117 passing tests). See [BUILDING.md](BUILDING.md) for details on using these examples.
+
+## Quick Validation
+
+```bash
+# From lean-zig root directory
+./validate-examples.sh  # Runs test suite + checks documentation
+```
+
+This validates that all 117 tests pass, covering all example concepts.
 
 ## Learning Path
 
-These examples are designed to be completed in order, introducing concepts progressively:
+Study these examples in order to understand concepts progressively:
 
 | Example | Difficulty | Key Concepts | Time |
 |---------|-----------|--------------|------|
@@ -28,25 +47,31 @@ These examples are designed to be completed in order, introducing concepts progr
 - Basic understanding of Zig syntax
 - Familiarity with systems programming concepts
 
-## Quick Start
+## How to Use These Examples
 
-### Build All Examples
+### 1. Read for Concepts
+
+Each example teaches specific concepts:
+- Read README.md for explanations
+- Study Main.lean for Lean FFI patterns
+- Examine zig/*.zig for Zig implementations
+- Note memory management and performance tips
+
+### 2. Verify Concepts Work
+
+All concepts are validated in the test suite:
 
 ```bash
-# From the examples directory
-for dir in */; do
-    cd "$dir"
-    lake build
-    cd ..
-done
+# From lean-zig root
+zig build test  # Runs 117 tests covering all concepts
 ```
 
-### Run Individual Example
+### 3. Use as Templates
 
+Copy example structure into your project:
 ```bash
-cd 01-hello-ffi
-lake build
-lake exe hello-ffi-demo
+cp -r examples/01-hello-ffi my-project
+# Then set up proper build (see BUILDING.md)
 ```
 
 ## Concept Matrix
