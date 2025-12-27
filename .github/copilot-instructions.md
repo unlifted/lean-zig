@@ -40,6 +40,18 @@ This project provides Zig FFI bindings for the Lean 4 runtime, enabling Zig code
 - Check allocation failures (`orelse` clauses)
 - Never assume a tagged pointer is a heap object or vice versa
 
+## Git Workflow (CRITICAL)
+
+### Before Creating Feature Branches
+**ALWAYS pull main first to avoid merge conflicts:**
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/new-branch
+```
+
+This project has a single developer, so merge conflicts should be rare. Following this pattern keeps the history clean and rebases/merges simple.
+
 ## Testing
 
 ### Test Organization
