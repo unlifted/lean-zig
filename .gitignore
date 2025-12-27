@@ -27,3 +27,4 @@ scratch/
 
 # Build artifacts
 lean
+Zig/lean_test.zig.old
