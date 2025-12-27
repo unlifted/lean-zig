@@ -938,11 +938,6 @@ pub inline fn arrayUset(o: obj_res, i: usize, v: obj_arg) void {
 
 /// Directly modify the size field of an array.
 ///
-/// ## Safety
-/// Caller must ensure new_size <= capacity and all elements [0..new_size)
-/// are valid objects.
-/// Modify the size field of an array directly (unchecked).
-///
 /// ## UNSAFE
 /// This function bypasses Lean's safety guarantees. Use only when you know what you're doing.
 ///
@@ -1042,9 +1037,9 @@ pub inline fn sarrayCapacity(o: b_obj_arg) usize {
 /// The input must be a valid, non-null scalar array object.
 ///
 /// ## Returns
-/// - ByteArray: 1
-/// - FloatArray (f64): 8
-/// - etc.
+/// - ByteArray (u8): 1
+/// - Float32Array (f32): 4
+/// - Float64Array (f64): 8
 pub inline fn sarrayElemSize(o: b_obj_arg) usize {
     const obj = o orelse unreachable;
     const arr: *ScalarArrayObject = @ptrCast(@alignCast(obj));

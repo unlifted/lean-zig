@@ -14,10 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Constructor utilities (4 tests): `ctorNumObjs`, `ctorScalarCptr`, `ctorSetTag`, `ctorRelease`
   - Deep reference counting scenarios (7 tests): circular references, high refcounts, nested graphs, shared objects, balance verification
   - Performance baselines (3 tests): boxing, array access, and refcount operations with environment-aware thresholds
-- **Phase 2 Test Suite Completed (Array & String Operations)**: Added 14 tests covering:
+- **Phase 2 Test Suite Completed (Array & String Operations)**: Added 14 new tests (6 array + 8 string), bringing total from 68 to 82 tests, covering:
   - Array operations (6 tests): allocation, swap, bounds checking, capacity invariants
   - String operations (8 tests): equality, comparison, UTF-8 handling, empty strings
-- **Phase 3 Test Suite Completed (Scalar Arrays)**: Added 11 tests covering:
+- **Phase 3 Test Suite Completed (Scalar Arrays)**: Added 11 new tests, bringing total from 82 to 93 tests, covering:
   - Type detection: `isSarray` validation
   - Accessor functions: size, capacity, element size, data pointer
   - Mutation: `sarraySetSize` 
