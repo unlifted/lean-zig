@@ -364,6 +364,282 @@ export fn sum_array(arr: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
 }
 ```
 
+### Lazy Evaluation with Thunks
+
+```zig
+/// Create a pure thunk (already evaluated)
+export fn createPureThunk(value: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Wrap value in thunk for lazy semantics
+    const thunk = lean.lean_thunk_pure(value) orelse {
+        lean.lean_dec_ref(value);
+        const err = lean.lean_mk_string("thunk allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    return lean.ioResultMkOk(thunk);
+}
+
+/// Force evaluation of a thunk (borrowed access)
+export fn forceThunk(thunk: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Get cached value (borrowed reference)
+    const value = lean.thunkGet(thunk);
+    
+    // Increment refcount to return owned reference
+    lean.lean_inc_ref(value);
+    
+    return lean.ioResultMkOk(value);
+}
+
+/// Process thunk with ownership transfer
+export fn consumeThunk(thunk: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Get value with ownership (thunk consumed)
+    const value = lean.lean_thunk_get_own(thunk);
+    defer lean.lean_dec_ref(value);
+    
+    // Process the value
+    if (lean.isScalar(value)) {
+        const n = lean.unboxUsize(value);
+        const doubled = lean.boxUsize(n * 2);
+        return lean.ioResultMkOk(doubled);
+    }
+    
+    // Return original for non-scalar
+    lean.lean_inc_ref(value);
+    return lean.ioResultMkOk(value);
+}
+```
+
+**Lean side:**
+```lean
+-- Pure thunk creation
+@[extern "createPureThunk"]
+opaque createPureThunk (value : Nat) : IO (Thunk Nat)
+
+-- Force evaluation
+@[extern "forceThunk"]  
+opaque forceThunk (t : @& Thunk Nat) : IO Nat
+
+def example : IO Unit := do
+  let thunk ← createPureThunk 42
+  let value ← forceThunk thunk
+  IO.println s!"Value: {value}"
+```
+
+### Asynchronous Tasks
+
+```zig
+/// Note: Full task spawning requires Lean IO runtime initialization.
+/// This example shows the API structure for task operations.
+
+/// Spawn an async computation (requires Lean-created closure)
+export fn spawnComputation(closure: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Spawn with default priority and async mode
+    const task = lean.taskSpawn(closure) orelse {
+        lean.lean_dec_ref(closure);
+        const err = lean.lean_mk_string("task spawn failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    return lean.ioResultMkOk(task);
+}
+
+/// Map a function over a task result
+export fn mapTask(task: lean.obj_arg, transform: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Chain transformation
+    const mapped = lean.taskMap(task, transform) orelse {
+        lean.lean_dec_ref(task);
+        lean.lean_dec_ref(transform);
+        const err = lean.lean_mk_string("task map failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    return lean.ioResultMkOk(mapped);
+}
+
+/// Wait for task completion
+export fn awaitTask(task: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Blocks until task completes
+    const result = lean.lean_task_get_own(task);
+    
+    return lean.ioResultMkOk(result);
+}
+```
+
+**Lean side:**
+```lean
+-- Task operations
+@[extern "spawnComputation"]
+opaque spawnComputation (f : Unit → Nat) : IO (Task Nat)
+
+@[extern "mapTask"]
+opaque mapTask (t : Task Nat) (f : Nat → Nat) : IO (Task Nat)
+
+@[extern "awaitTask"]
+opaque awaitTask (t : Task Nat) : IO Nat
+
+def asyncExample : IO Unit := do
+  let task ← spawnComputation (fun () => 42)
+  let mapped ← mapTask task (· * 2)
+  let result ← awaitTask mapped
+  IO.println s!"Async result: {result}"
+```
+
+### Mutable References (ST Monad)
+
+```zig
+/// Increment a counter stored in a reference
+export fn incrementCounter(ref: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Get current value
+    const current = lean.refGet(ref);
+    const n = if (current) |val| 
+        lean.unboxUsize(val)
+    else 
+        0;
+    
+    // Increment and store
+    const new_value = lean.boxUsize(n + 1);
+    lean.refSet(ref, new_value);
+    
+    // Return unit
+    const unit = lean.allocCtor(0, 0, 0) orelse {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    return lean.ioResultMkOk(unit);
+}
+
+/// Swap values between two references
+export fn swapRefs(ref1: lean.b_obj_arg, ref2: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Get both values
+    const val1 = lean.refGet(ref1);
+    const val2 = lean.refGet(ref2);
+    
+    // Increment refcounts for swap
+    if (val1) |v| lean.lean_inc_ref(v);
+    if (val2) |v| lean.lean_inc_ref(v);
+    
+    // Swap (refSet automatically dec_refs old values)
+    lean.refSet(ref1, val2);
+    lean.refSet(ref2, val1);
+    
+    // Return unit
+    const unit = lean.allocCtor(0, 0, 0) orelse {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    return lean.ioResultMkOk(unit);
+}
+
+/// Accumulate values in a reference
+export fn accumulateInRef(ref: lean.b_obj_arg, value: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(value);
+    
+    const current = lean.refGet(ref);
+    const current_val = if (current) |v| lean.unboxUsize(v) else 0;
+    const new_val = lean.unboxUsize(value);
+    
+    const sum = lean.boxUsize(current_val + new_val);
+    lean.refSet(ref, sum);
+    
+    const unit = lean.allocCtor(0, 0, 0) orelse {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    return lean.ioResultMkOk(unit);
+}
+```
+
+**Lean side:**
+```lean
+-- ST monad reference operations
+@[extern "incrementCounter"]
+opaque incrementCounter (ref : @& STRef RealWorld Nat) : ST RealWorld Unit
+
+@[extern "swapRefs"]
+opaque swapRefs (r1 r2 : @& STRef RealWorld Nat) : ST RealWorld Unit
+
+@[extern "accumulateInRef"]
+opaque accumulateInRef (ref : @& STRef RealWorld Nat) (value : Nat) : ST RealWorld Unit
+
+def stExample : IO Unit := do
+  let result := (do
+    let r ← ST.mkRef 10
+    incrementCounter r
+    incrementCounter r
+    r.get
+  )
+  IO.println s!"Counter: {result}"  -- Prints 12
+```
+
+### Complete End-to-End: Lazy Counter with Persistence
+
+Combining thunks and references for lazy initialization:
+
+```zig
+/// Lazy initialize a reference with computed value
+export fn lazyInitRef(ref: lean.b_obj_arg, thunk: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    // Check if already initialized
+    const current = lean.refGet(ref);
+    if (current != null) {
+        lean.lean_dec_ref(thunk);
+        const unit = lean.allocCtor(0, 0, 0) orelse {
+            const err = lean.lean_mk_string("allocation failed");
+            return lean.ioResultMkError(err);
+        };
+        return lean.ioResultMkOk(unit);
+    }
+    
+    // Force thunk evaluation
+    const value = lean.lean_thunk_get_own(thunk);
+    
+    // Store in reference
+    lean.refSet(ref, value);
+    
+    const unit = lean.allocCtor(0, 0, 0) orelse {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    return lean.ioResultMkOk(unit);
+}
+```
+
+**Lean side:**
+```lean
+@[extern "lazyInitRef"]
+opaque lazyInitRef (ref : @& STRef RealWorld (Option Nat)) (thunk : Thunk Nat) : ST RealWorld Unit
+
+def lazyCounterExample : IO Unit := do
+  let result := (do
+    let ref ← ST.mkRef none
+    let expensive := Thunk.pure (do
+      -- Simulate expensive computation
+      42
+    )
+    lazyInitRef ref expensive
+    ref.get
+  )
+  IO.println s!"Lazy result: {result}"
+```
+
 ## Troubleshooting
 
 ### Bindings Don't Match Lean Version
