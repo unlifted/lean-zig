@@ -130,6 +130,24 @@ pub const ArrayObject = extern struct {
     // Element pointers follow (flexible array member)
 };
 
+/// Lean scalar array object layout.
+///
+/// Scalar arrays (ByteArray, FloatArray, etc.) store primitive values
+/// without object indirection. The data follows immediately after the header.
+///
+/// - `m_size`: Current number of elements
+/// - `m_capacity`: Maximum elements before reallocation
+/// - `m_elem_size`: Size in bytes of each element
+///
+/// Matches `lean_sarray_object` in `lean/lean.h`.
+pub const ScalarArrayObject = extern struct {
+    m_header: ObjectHeader,
+    m_size: usize,
+    m_capacity: usize,
+    m_elem_size: usize,
+    // Raw data follows (flexible array member)
+};
+
 // ============================================================================
 // Type Aliases (Lean Ownership Conventions)
 // ============================================================================
@@ -988,6 +1006,88 @@ pub fn mkArrayWithSize(capacity: usize, initialSize: usize) obj_res {
     arr.m_size = initialSize;
     // Elements are NOT initialized - caller must populate them
     return o;
+}
+
+// ============================================================================
+// Scalar Array Functions (Hot Path - Manually Inlined for Performance)
+// ============================================================================
+
+// Scalar arrays (ByteArray, FloatArray, etc.) store primitive values directly
+// without object indirection. These inline accessors provide zero-cost access
+// to the array metadata and raw data.
+
+/// Get the number of elements in a scalar array.
+///
+/// ## Precondition
+/// The input must be a valid, non-null scalar array object.
+pub inline fn sarraySize(o: b_obj_arg) usize {
+    const obj = o orelse unreachable;
+    const arr: *ScalarArrayObject = @ptrCast(@alignCast(obj));
+    return arr.m_size;
+}
+
+/// Get the capacity (maximum elements) of a scalar array.
+///
+/// ## Precondition
+/// The input must be a valid, non-null scalar array object.
+pub inline fn sarrayCapacity(o: b_obj_arg) usize {
+    const obj = o orelse unreachable;
+    const arr: *ScalarArrayObject = @ptrCast(@alignCast(obj));
+    return arr.m_capacity;
+}
+
+/// Get the element size in bytes of a scalar array.
+///
+/// ## Precondition
+/// The input must be a valid, non-null scalar array object.
+///
+/// ## Returns
+/// - ByteArray: 1
+/// - FloatArray (f64): 8
+/// - etc.
+pub inline fn sarrayElemSize(o: b_obj_arg) usize {
+    const obj = o orelse unreachable;
+    const arr: *ScalarArrayObject = @ptrCast(@alignCast(obj));
+    return arr.m_elem_size;
+}
+
+/// Get a pointer to the raw data of a scalar array.
+///
+/// Returns a pointer to the byte buffer containing the array elements.
+/// Caller must cast to appropriate type based on element size.
+///
+/// ## Precondition
+/// The input must be a valid, non-null scalar array object.
+///
+/// ## Example
+/// ```zig
+/// const byte_arr = get_byte_array();
+/// const data = lean.sarrayCptr(byte_arr);
+/// const size = lean.sarraySize(byte_arr);
+/// const bytes: [*]u8 = @ptrCast(data);
+/// for (bytes[0..size]) |byte| {
+///     // Process byte...
+/// }
+/// ```
+pub inline fn sarrayCptr(o: b_obj_arg) [*]u8 {
+    const obj = o orelse unreachable;
+    const base: [*]u8 = @ptrCast(@alignCast(obj));
+    return base + @sizeOf(ScalarArrayObject);
+}
+
+/// Directly modify the size field of a scalar array.
+///
+/// ## UNSAFE
+/// This function bypasses Lean's safety guarantees. The caller must ensure:
+/// 1. new_size <= capacity
+/// 2. If increasing size, new elements are properly initialized
+/// 3. If decreasing size, caller handles cleanup if needed
+///
+/// Violating these requirements causes undefined behavior.
+pub inline fn sarraySetSize(o: obj_res, new_size: usize) void {
+    const obj = o orelse unreachable;
+    const arr: *ScalarArrayObject = @ptrCast(@alignCast(obj));
+    arr.m_size = new_size;
 }
 
 // ============================================================================
