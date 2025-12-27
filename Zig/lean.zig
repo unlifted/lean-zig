@@ -74,7 +74,7 @@ pub const Object = lean_raw.lean_object;
 /// Since `Object` is opaque from lean_raw, we need this struct definition
 /// for pointer arithmetic and field access in our inline functions.
 /// **Only use this after verifying the object type!**
-const ObjectHeader = extern struct {
+pub const ObjectHeader = extern struct {
     m_rc: i32,
     m_cs_sz: u16,
     m_other: u8,
@@ -1236,7 +1236,7 @@ pub inline fn lean_alloc_closure(fun: *anyopaque, arity: u32, num_fixed: u32) ob
     for (0..num_fixed) |i| {
         args[i] = null;
     }
-    
+
     return obj;
 }
 
@@ -1251,6 +1251,259 @@ pub inline fn closureArgCptr(o: b_obj_arg) [*]obj_arg {
     const base: [*]u8 = @ptrCast(@alignCast(obj));
     const args_offset = @sizeOf(ClosureObject);
     return @ptrCast(@alignCast(base + args_offset));
+}
+
+// ============================================================================
+// Thunk Functions (Mixed: inline accessors + forwarded operations)
+// ============================================================================
+
+// Thunks represent lazy computations. The value is computed on first access
+// and cached for subsequent calls. These functions support the Thunk API.
+
+/// Thunk object layout.
+///
+/// Thunks cache computed values and use atomic operations for thread-safety.
+/// - `m_value`: Cached result (null until first evaluation)
+/// - `m_closure`: Closure to invoke for evaluation
+///
+/// Matches `lean_thunk_object` in `lean/lean.h`.
+pub const ThunkObject = extern struct {
+    m_header: ObjectHeader,
+    m_value: ?*anyopaque, // Actually _Atomic(lean_object*) in C
+    m_closure: ?*anyopaque, // Actually _Atomic(lean_object*) in C
+};
+
+/// Create a thunk that's already evaluated (pure value).
+///
+/// ## Parameters
+/// - `v` - The value to wrap (takes ownership)
+///
+/// ## Returns
+/// A thunk object with cached value, no closure needed.
+///
+/// ## Implementation Note
+/// This is an inline function in lean.h, reimplemented for zero-cost FFI.
+pub inline fn lean_thunk_pure(v: obj_arg) obj_res {
+    const size = @sizeOf(ThunkObject);
+    const obj = lean_alloc_object(size) orelse return null;
+
+    // Set header
+    const header: *ObjectHeader = @ptrCast(@alignCast(obj));
+    header.m_tag = Tag.thunk;
+    header.m_other = 0;
+
+    // Set thunk fields
+    const thunk: *ThunkObject = @ptrCast(@alignCast(obj));
+    thunk.m_value = v;
+    thunk.m_closure = null;
+
+    return obj;
+}
+
+/// Get the cached value from a thunk (borrowed reference).
+///
+/// If the thunk hasn't been evaluated yet, forces evaluation via `lean_thunk_get_core`.
+///
+/// ## Preconditions
+/// - Input must be a valid non-null thunk object
+/// - Passing null is a programming error and will trigger unreachable panic
+///
+/// **Mixed path**: Inline fast check, forwards to lean_raw for evaluation.
+pub inline fn thunkGet(t: b_obj_arg) obj_arg {
+    const obj = t orelse unreachable;
+    const thunk: *ThunkObject = @ptrCast(@alignCast(obj));
+
+    // Fast path: value already computed
+    if (thunk.m_value) |val| {
+        return @ptrCast(val);
+    }
+
+    // Slow path: need to evaluate closure
+    return lean_thunk_get_core(obj);
+}
+
+/// Evaluate a thunk and return the value with ownership transferred.
+///
+/// This is the primitive for implementing `Thunk.get : Thunk A -> A`.
+/// It increments the reference count before returning.
+///
+/// ## Parameters
+/// - `t` - Thunk to evaluate (borrowed)
+///
+/// ## Returns
+/// The evaluated value (caller owns).
+///
+/// **Mixed path**: Uses thunkGet for evaluation, manually increments ref.
+pub inline fn lean_thunk_get_own(t: b_obj_arg) obj_res {
+    const result = thunkGet(t);
+    lean_inc_ref(result);
+    return result;
+}
+
+/// Core thunk evaluation function (forward from lean_raw).
+///
+/// **Cold path**: Handles thread-safe evaluation and caching.
+extern fn lean_thunk_get_core(t: obj_arg) obj_res;
+
+// ============================================================================
+// Task Functions (Cold Path - Forwarded from lean_raw)
+// ============================================================================
+
+// Tasks represent asynchronous computations. All task operations involve
+// complex runtime work (thread scheduling, synchronization), so we forward
+// them directly to the Lean runtime.
+
+/// Spawn a task to execute a closure asynchronously.
+///
+/// ## Parameters
+/// - `c` - Closure of type `Unit -> A` to execute
+/// - `prio` - Priority (higher = more important)
+/// - `keep_alive` - Whether to keep the task alive after completion
+///
+/// ## Returns
+/// A `Task A` object.
+///
+/// **Cold path**: Forwarded from lean_raw (involves thread scheduling).
+pub const lean_task_spawn_core = lean_raw.lean_task_spawn_core;
+
+/// Get the result of a task, blocking until it completes.
+///
+/// Returns a borrowed reference. Use `lean_task_get_own` if you need ownership.
+///
+/// **Cold path**: Forwarded from lean_raw (involves synchronization).
+pub const lean_task_get = lean_raw.lean_task_get;
+
+/// Get the result of a task with ownership transfer.
+///
+/// Blocks until the task completes, then returns the result and decrements
+/// the task's reference count.
+///
+/// ## Parameters
+/// - `t` - Task to wait for (takes ownership)
+///
+/// ## Returns
+/// The task's result (caller owns).
+///
+/// ## Implementation Note
+/// This is an inline function in lean.h, reimplemented for correct ownership semantics.
+pub inline fn lean_task_get_own(t: obj_arg) obj_res {
+    const result = lean_task_get(t);
+    lean_inc_ref(result);
+    lean_dec_ref(t);
+    return result;
+}
+
+/// Apply a function to a task's result, creating a new task.
+///
+/// ## Parameters
+/// - `f` - Function of type `A -> B` to apply
+/// - `t` - Task of type `Task A`
+/// - `prio` - Priority for the new task
+/// - `sync` - Whether to execute synchronously
+/// - `keep_alive` - Whether to keep the task alive
+///
+/// ## Returns
+/// A `Task B` object.
+///
+/// **Cold path**: Forwarded from lean_raw (involves task creation).
+pub const lean_task_map_core = lean_raw.lean_task_map_core;
+
+/// Chain tasks together with monadic bind.
+///
+/// ## Parameters
+/// - `x` - Task of type `Task A`
+/// - `f` - Function of type `A -> Task B`
+/// - `prio` - Priority for the new task
+/// - `sync` - Whether to execute synchronously
+/// - `keep_alive` - Whether to keep the task alive
+///
+/// ## Returns
+/// A `Task B` object.
+///
+/// **Cold path**: Forwarded from lean_raw (involves task creation).
+pub const lean_task_bind_core = lean_raw.lean_task_bind_core;
+
+/// Convenience wrapper: spawn a task with default priority and async mode.
+///
+/// ## Parameters
+/// - `c` - Closure of type `Unit -> A` to execute
+///
+/// ## Returns
+/// A `Task A` object.
+pub inline fn taskSpawn(c: obj_arg) obj_res {
+    return lean_task_spawn_core(c, 0, false);
+}
+
+/// Convenience wrapper: map a function over a task with default settings.
+///
+/// ## Parameters
+/// - `f` - Function to apply
+/// - `t` - Source task
+///
+/// ## Returns
+/// Mapped task.
+pub inline fn taskMap(f: obj_arg, t: obj_arg) obj_res {
+    return lean_task_map_core(f, t, 0, false, false);
+}
+
+/// Convenience wrapper: bind tasks together with default settings.
+///
+/// ## Parameters
+/// - `x` - Source task
+/// - `f` - Bind function
+///
+/// ## Returns
+/// Bound task.
+pub inline fn taskBind(x: obj_arg, f: obj_arg) obj_res {
+    return lean_task_bind_core(x, f, 0, false, false);
+}
+
+// ============================================================================
+// Reference Functions (Hot Path - Manually Inlined for Performance)
+// ============================================================================
+
+// References are mutable cells used in the ST (state thread) monad.
+// These are simple get/set operations on a single field, so we inline them.
+
+/// Reference object layout.
+///
+/// References hold a single mutable value for the ST monad.
+/// - `m_value`: The current value
+///
+/// Matches `lean_ref_object` in `lean/lean.h`.
+pub const RefObject = extern struct {
+    m_header: ObjectHeader,
+    m_value: obj_arg,
+};
+
+/// Get the current value from a reference (borrowed).
+///
+/// ## Precondition
+/// Input must be a valid reference object.
+pub inline fn refGet(o: b_obj_arg) obj_arg {
+    const obj = o orelse unreachable;
+    const ref: *RefObject = @ptrCast(@alignCast(obj));
+    return ref.m_value;
+}
+
+/// Set a new value in a reference.
+///
+/// Decrements the reference count of the old value and stores the new value.
+///
+/// ## Preconditions
+/// - Input must be a valid reference object with exclusive ownership
+/// - New value must have appropriate reference count
+pub inline fn refSet(o: obj_arg, v: obj_arg) void {
+    const obj = o orelse unreachable;
+    const ref: *RefObject = @ptrCast(@alignCast(obj));
+
+    // Dec_ref old value
+    const old = ref.m_value;
+    if (old) |old_obj| {
+        lean_dec_ref(old_obj);
+    }
+
+    ref.m_value = v;
 }
 
 // ============================================================================

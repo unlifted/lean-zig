@@ -1806,3 +1806,201 @@ test "io: error propagation pattern" {
         try testing.expect(lean.isString(extracted));
     }
 }
+
+// ============================================================================
+// PHASE 5: Thunks, Tasks & References Tests
+// ============================================================================
+
+// Thunk Tests
+
+test "thunk: pure thunk creation and access" {
+    const value = lean.boxUsize(42);
+    const thunk = lean.lean_thunk_pure(value) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(thunk);
+
+    // Verify it's a thunk
+    try testing.expect(lean.isThunk(thunk));
+    try testing.expect(!lean.isTask(thunk));
+    try testing.expect(!lean.isClosure(thunk));
+
+    // Get value (borrowed)
+    const retrieved = lean.thunkGet(thunk);
+    try testing.expect(lean.isScalar(retrieved));
+    try testing.expectEqual(@as(usize, 42), lean.unboxUsize(retrieved));
+}
+
+test "thunk: get_own transfers ownership" {
+    const value = lean.boxUsize(100);
+    const thunk = lean.lean_thunk_pure(value) orelse return error.AllocationFailed;
+
+    // Get with ownership (increments ref on value)
+    const owned = lean.lean_thunk_get_own(thunk);
+    defer lean.lean_dec_ref(owned);
+
+    // Original thunk still valid
+    try testing.expect(lean.isThunk(thunk));
+
+    // Can still access value through thunk
+    const borrowed = lean.thunkGet(thunk);
+    try testing.expectEqual(@as(usize, 100), lean.unboxUsize(borrowed));
+
+    // Clean up thunk
+    lean.lean_dec_ref(thunk);
+}
+
+test "thunk: multiple accesses return same value" {
+    const value = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    const thunk = lean.lean_thunk_pure(value) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(thunk);
+
+    // Multiple gets should return same cached value
+    const v1 = lean.thunkGet(thunk);
+    const v2 = lean.thunkGet(thunk);
+    const v3 = lean.thunkGet(thunk);
+
+    try testing.expect(v1 == v2);
+    try testing.expect(v2 == v3);
+}
+
+// Task Tests
+
+test "task: type checking" {
+    // We can't easily test task execution without the full Lean IO system,
+    // but we can test type checking on mock task objects.
+    // Tasks are created via lean_task_spawn_core which requires full runtime init,
+    // so we'll just verify the API functions exist and have correct signatures.
+
+    // Just verify functions are accessible (compilation test)
+    _ = lean.lean_task_spawn_core;
+    _ = lean.lean_task_get;
+    _ = lean.lean_task_get_own;
+    _ = lean.lean_task_map_core;
+    _ = lean.lean_task_bind_core;
+    _ = lean.taskSpawn;
+    _ = lean.taskMap;
+    _ = lean.taskBind;
+}
+
+// Reference Tests
+
+test "ref: basic get and set" {
+    // Create a ref object manually (refs are normally created by ST runtime)
+    const ref = lean.lean_alloc_object(@sizeOf(lean.RefObject)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ref);
+
+    // Initialize header
+    const header: *lean.ObjectHeader = @ptrCast(@alignCast(ref));
+    header.m_tag = lean.Tag.ref;
+    header.m_other = 0;
+
+    // Set initial value
+    const initial = lean.boxUsize(10);
+    lean.refSet(ref, initial);
+
+    // Get value
+    const retrieved = lean.refGet(ref);
+    try testing.expect(lean.isScalar(retrieved));
+    try testing.expectEqual(@as(usize, 10), lean.unboxUsize(retrieved));
+}
+
+test "ref: set updates value" {
+    const ref = lean.lean_alloc_object(@sizeOf(lean.RefObject)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ref);
+
+    const header: *lean.ObjectHeader = @ptrCast(@alignCast(ref));
+    header.m_tag = lean.Tag.ref;
+    header.m_other = 0;
+
+    // Set initial value
+    lean.refSet(ref, lean.boxUsize(100));
+
+    // Verify initial
+    const v1 = lean.refGet(ref);
+    try testing.expectEqual(@as(usize, 100), lean.unboxUsize(v1));
+
+    // Update value
+    lean.refSet(ref, lean.boxUsize(200));
+
+    // Verify updated
+    const v2 = lean.refGet(ref);
+    try testing.expectEqual(@as(usize, 200), lean.unboxUsize(v2));
+
+    // Update again
+    lean.refSet(ref, lean.boxUsize(300));
+    const v3 = lean.refGet(ref);
+    try testing.expectEqual(@as(usize, 300), lean.unboxUsize(v3));
+}
+
+test "ref: set decrements old value refcount" {
+    const ref = lean.lean_alloc_object(@sizeOf(lean.RefObject)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ref);
+
+    const header: *lean.ObjectHeader = @ptrCast(@alignCast(ref));
+    header.m_tag = lean.Tag.ref;
+    header.m_other = 0;
+
+    // Create an object to track
+    const obj1 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    lean.lean_inc_ref(obj1); // Keep alive for test
+
+    // Set as ref value
+    lean.refSet(ref, obj1);
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(obj1));
+
+    // Create another object
+    const obj2 = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    lean.lean_inc_ref(obj2); // Keep alive
+
+    // Replace ref value (should dec_ref obj1)
+    lean.refSet(ref, obj2);
+
+    // obj1 should have rc=1, obj2 should have rc=2
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(obj1));
+    try testing.expectEqual(@as(i32, 2), lean.objectRc(obj2));
+
+    // Clean up
+    lean.lean_dec_ref(obj1);
+    lean.lean_dec_ref(obj2);
+}
+
+test "ref: object storage and retrieval" {
+    const ref = lean.lean_alloc_object(@sizeOf(lean.RefObject)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ref);
+
+    const header: *lean.ObjectHeader = @ptrCast(@alignCast(ref));
+    header.m_tag = lean.Tag.ref;
+    header.m_other = 0;
+
+    // Store a complex constructor
+    const ctor = lean.allocCtor(5, 2, 8) orelse return error.AllocationFailed;
+    lean.ctorSetUint64(ctor, 0, 12345);
+
+    lean.refSet(ref, ctor);
+
+    // Retrieve and verify
+    const retrieved = lean.refGet(ref);
+    try testing.expect(!lean.isScalar(retrieved));
+    try testing.expectEqual(@as(u8, 5), lean.objectTag(retrieved));
+    try testing.expectEqual(@as(u64, 12345), lean.ctorGetUint64(retrieved, 0));
+}
+
+test "ref: null as valid reference value" {
+    const ref = lean.lean_alloc_object(@sizeOf(lean.RefObject)) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(ref);
+
+    const header: *lean.ObjectHeader = @ptrCast(@alignCast(ref));
+    header.m_tag = lean.Tag.ref;
+    header.m_other = 0;
+
+    // Set null value (valid for optional references)
+    lean.refSet(ref, null);
+
+    // Get should return null
+    const retrieved = lean.refGet(ref);
+    try testing.expect(retrieved == null);
+
+    // Can set non-null after null
+    lean.refSet(ref, lean.boxUsize(42));
+    const v = lean.refGet(ref);
+    try testing.expectEqual(@as(usize, 42), lean.unboxUsize(v));
+}

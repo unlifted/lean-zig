@@ -31,15 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **7 closure accessor functions**: `closureArity`, `closureNumFixed`, `closureFun`, `closureGet`, `closureSet`, `closureArgCptr`, plus `isClosure` type check
   - **Closure tests (11 tests)**: allocation, metadata access, fixed argument get/set, pointer access, zero/full saturation, refcounting, partial application, iteration
   - **Advanced IO result tests (5 tests)**: value extraction, error messages, complex objects, tag correctness, error propagation
+- **Phase 5: Thunks, Tasks & References**: Added 9 new tests, bringing total from 108 to 117 tests, covering:
+  - **ThunkObject and RefObject type definitions** with complete struct layouts matching Lean runtime
+  - **Thunk API (4 functions)**: `lean_thunk_pure`, `thunkGet`, `lean_thunk_get_own`, plus `lean_thunk_get_core` forwarding
+  - **Task API (9 functions)**: Core functions (`lean_task_spawn_core`, `lean_task_get`, `lean_task_get_own`, `lean_task_map_core`, `lean_task_bind_core`) plus convenience wrappers (`taskSpawn`, `taskMap`, `taskBind`)
+  - **Reference API (2 functions)**: `refGet`, `refSet` for ST monad mutable references
+  - **Thunk tests (3 tests)**: pure thunk creation, ownership transfer, value caching
+  - **Task tests (1 test)**: API existence and signature validation
+  - **Reference tests (5 tests)**: basic get/set, value updates, refcount management, object storage, null handling
 - Type inspection API functions for runtime type checking with null safety documentation
 - Complete scalar field accessor API for constructor objects with alignment safety documentation
 - Constructor utility functions for advanced memory management
 - **Scalar array API functions** (`sarraySize`, `sarrayCapacity`, `sarrayElemSize`, `sarrayCptr`, `sarraySetSize`)
-- **Closure API functions** for functional programming and FFI integration  
+- **Closure API functions** for functional programming and FFI integration
+- **Thunk, Task, and Reference APIs** completing core runtime FFI coverage
+- **Made ObjectHeader public** for advanced memory management use cases
 - Performance benchmarking infrastructure with CI-aware thresholds
 
 ### Changed
-- Expanded test coverage from ~25 tests to **108 tests** (332% increase from original baseline)
+- Expanded test coverage from ~25 tests to **117 tests** (368% increase from original baseline)
 - Enhanced memory safety validation with complex reference counting scenarios
 - Improved documentation with null safety warnings and alignment considerations
 - Performance tests now adapt thresholds based on CI environment detection

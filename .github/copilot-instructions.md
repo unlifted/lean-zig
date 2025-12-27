@@ -65,6 +65,18 @@ test "descriptive name" {
 3. API contracts (array bounds, null handling)
 4. Edge cases (empty inputs, maximum values)
 
+## Git Workflow (CRITICAL)
+
+### Before Creating Feature Branches
+**ALWAYS pull main first to avoid merge conflicts:**
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/new-branch
+```
+
+This project has a single developer, so merge conflicts should be rare. Following this pattern keeps the history clean and rebases/merges simple.
+
 ## Build & CI
 
 ### Lake Configuration
