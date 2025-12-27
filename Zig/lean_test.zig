@@ -1043,6 +1043,9 @@ test "array: simple allocation and cleanup" {
     const arr = lean.mkArrayWithSize(3, 3) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(arr);
 
+    // Verify size was set correctly
+    try testing.expectEqual(@as(usize, 3), lean.arraySize(arr));
+
     // Populate all elements before cleanup
     lean.arraySet(arr, 0, lean.boxUsize(10));
     lean.arraySet(arr, 1, lean.boxUsize(20));
@@ -1246,19 +1249,19 @@ test "sarray: isSarray type detection" {
     // This test verifies that isSarray correctly identifies scalar arrays
     // by checking the tag field. We can test this with a manually created
     // header structure.
-    
+
     // Create a minimal object with sarray tag
     const size = @sizeOf(lean.ScalarArrayObject);
     const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 0;
     obj.m_capacity = 0;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
     try testing.expect(lean.isSarray(as_obj));
     try testing.expect(!lean.isArray(as_obj));
@@ -1270,16 +1273,16 @@ test "sarray: accessor functions with mock structure" {
     const size = @sizeOf(lean.ScalarArrayObject) + 16; // + some data
     const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 10;
     obj.m_capacity = 20;
     obj.m_elem_size = 1; // ByteArray
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     try testing.expectEqual(@as(usize, 10), lean.sarraySize(as_obj));
     try testing.expectEqual(@as(usize, 20), lean.sarrayCapacity(as_obj));
     try testing.expectEqual(@as(usize, 1), lean.sarrayElemSize(as_obj));
@@ -1290,22 +1293,22 @@ test "sarray: data pointer calculation" {
     const total_size = @sizeOf(lean.ScalarArrayObject) + 256; // + data buffer
     const mem = std.testing.allocator.alloc(u8, total_size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     // Initialize with known pattern
     for (mem, 0..) |*byte, i| {
         byte.* = @intCast(i & 0xFF);
     }
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 256;
     obj.m_capacity = 256;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
     const data = lean.sarrayCptr(as_obj);
-    
+
     // Data should point to memory right after the header
     const header_end = @sizeOf(lean.ScalarArrayObject);
     try testing.expectEqual(mem[header_end], data[0]);
@@ -1315,16 +1318,16 @@ test "sarray: setSize mutation" {
     const size = @sizeOf(lean.ScalarArrayObject);
     const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 10;
     obj.m_capacity = 20;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     lean.sarraySetSize(as_obj, 15);
     try testing.expectEqual(@as(usize, 15), lean.sarraySize(as_obj));
 }
@@ -1333,16 +1336,16 @@ test "sarray: capacity >= size invariant" {
     const size = @sizeOf(lean.ScalarArrayObject);
     const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 10;
     obj.m_capacity = 20;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     const cap = lean.sarrayCapacity(as_obj);
     const sz = lean.sarraySize(as_obj);
     try testing.expect(cap >= sz);
@@ -1355,19 +1358,19 @@ test "sarray: different element sizes" {
         .{ .elem_size = 4, .array_type = "Float32Array" },
         .{ .elem_size = 8, .array_type = "Float64Array" },
     };
-    
+
     for (test_cases) |tc| {
         const size = @sizeOf(lean.ScalarArrayObject);
         const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
         defer std.testing.allocator.free(mem);
-        
+
         const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
         obj.m_header.m_tag = lean.Tag.sarray;
         obj.m_header.m_rc = 1;
         obj.m_size = 0;
         obj.m_capacity = 0;
         obj.m_elem_size = tc.elem_size;
-        
+
         const as_obj: lean.obj_arg = @ptrCast(obj);
         try testing.expectEqual(tc.elem_size, lean.sarrayElemSize(as_obj));
     }
@@ -1379,16 +1382,16 @@ test "sarray: simulate byte array access pattern" {
     const total_size = @sizeOf(lean.ScalarArrayObject) + data_size;
     const mem = std.testing.allocator.alloc(u8, total_size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = data_size;
     obj.m_capacity = data_size;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     // Write pattern to byte array
     const data = lean.sarrayCptr(as_obj);
     const bytes: [*]u8 = @ptrCast(data);
@@ -1396,7 +1399,7 @@ test "sarray: simulate byte array access pattern" {
     while (i < data_size) : (i += 1) {
         bytes[i] = @intCast(i % 256);
     }
-    
+
     // Read back and verify
     i = 0;
     while (i < data_size) : (i += 1) {
@@ -1412,16 +1415,16 @@ test "sarray: simulate float array access pattern" {
     const total_size = @sizeOf(lean.ScalarArrayObject) + data_size;
     const mem = std.testing.allocator.alloc(u8, total_size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = elem_count;
     obj.m_capacity = elem_count;
     obj.m_elem_size = elem_size;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     // Write floats
     const data = lean.sarrayCptr(as_obj);
     const floats: [*]f64 = @ptrCast(@alignCast(data));
@@ -1429,7 +1432,7 @@ test "sarray: simulate float array access pattern" {
     while (i < elem_count) : (i += 1) {
         floats[i] = @as(f64, @floatFromInt(i)) * 1.5;
     }
-    
+
     // Read back and verify
     i = 0;
     while (i < elem_count) : (i += 1) {
@@ -1442,16 +1445,16 @@ test "sarray: empty scalar array" {
     const size = @sizeOf(lean.ScalarArrayObject);
     const mem = std.testing.allocator.alloc(u8, size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = 0;
     obj.m_capacity = 0;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     try testing.expectEqual(@as(usize, 0), lean.sarraySize(as_obj));
     try testing.expect(lean.isSarray(as_obj));
 }
@@ -1461,30 +1464,30 @@ test "sarray: distinguish from object array" {
     const sarray_size = @sizeOf(lean.ScalarArrayObject);
     const sarray_mem = std.testing.allocator.alloc(u8, sarray_size) catch unreachable;
     defer std.testing.allocator.free(sarray_mem);
-    
+
     const sarray_obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(sarray_mem.ptr));
     sarray_obj.m_header.m_tag = lean.Tag.sarray;
     sarray_obj.m_header.m_rc = 1;
     sarray_obj.m_size = 0;
     sarray_obj.m_capacity = 0;
     sarray_obj.m_elem_size = 1;
-    
+
     const array_size = @sizeOf(lean.ArrayObject);
     const array_mem = std.testing.allocator.alloc(u8, array_size) catch unreachable;
     defer std.testing.allocator.free(array_mem);
-    
+
     const array_obj: *lean.ArrayObject = @ptrCast(@alignCast(array_mem.ptr));
     array_obj.m_header.m_tag = lean.Tag.array;
     array_obj.m_header.m_rc = 1;
     array_obj.m_size = 0;
     array_obj.m_capacity = 0;
-    
+
     const sarray_ptr: lean.obj_arg = @ptrCast(sarray_obj);
     const array_ptr: lean.obj_arg = @ptrCast(array_obj);
-    
+
     try testing.expect(lean.isSarray(sarray_ptr));
     try testing.expect(!lean.isArray(sarray_ptr));
-    
+
     try testing.expect(lean.isArray(array_ptr));
     try testing.expect(!lean.isSarray(array_ptr));
 }
@@ -1495,33 +1498,33 @@ test "sarray: performance baseline for byte access" {
     const total_size = @sizeOf(lean.ScalarArrayObject) + data_size;
     const mem = std.testing.allocator.alloc(u8, total_size) catch unreachable;
     defer std.testing.allocator.free(mem);
-    
+
     const obj: *lean.ScalarArrayObject = @ptrCast(@alignCast(mem.ptr));
     obj.m_header.m_tag = lean.Tag.sarray;
     obj.m_header.m_rc = 1;
     obj.m_size = data_size;
     obj.m_capacity = data_size;
     obj.m_elem_size = 1;
-    
+
     const as_obj: lean.obj_arg = @ptrCast(obj);
-    
+
     var timer = std.time.Timer.start() catch unreachable;
-    
+
     const iterations = 1_000_000;
     const data = lean.sarrayCptr(as_obj);
     const bytes: [*]u8 = @ptrCast(data);
-    
+
     var i: usize = 0;
     var sum: u64 = 0;
     while (i < iterations) : (i += 1) {
         sum +%= bytes[i % data_size];
     }
-    
+
     const elapsed_ns = timer.read();
     const ns_per_access = elapsed_ns / iterations;
-    
+
     std.debug.print("\nScalar array access: {d}ns per operation (sum={d})\n", .{ ns_per_access, sum });
-    
+
     // Should be very fast - just pointer arithmetic + load
     // Higher threshold due to cache effects with large iteration count
     const is_ci = std.process.hasEnvVarConstant("CI") or std.process.hasEnvVarConstant("GITHUB_ACTIONS");
@@ -1539,37 +1542,38 @@ test "closure: allocation and basic accessors" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x1000); // Mock function pointer
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 3, 1) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     // Verify it's a closure
     try testing.expect(lean.isClosure(closure));
     try testing.expect(!lean.isThunk(closure));
     try testing.expect(!lean.isTask(closure));
-    
+
     // Verify metadata
     try testing.expectEqual(@as(u16, 3), lean.closureArity(closure));
     try testing.expectEqual(@as(u16, 1), lean.closureNumFixed(closure));
-    
-    // Verify function pointer
+
+    // Verify function pointer (store casted value for clarity)
+    const expected_fn_ptr: *anyopaque = @ptrCast(@constCast(mock_fn));
     const fun_ptr = lean.closureFun(closure);
-    try testing.expect(fun_ptr == @as(*anyopaque, @ptrCast(@constCast(mock_fn))));
+    try testing.expect(fun_ptr == expected_fn_ptr);
 }
 
 test "closure: setting and getting fixed arguments" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x2000);
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 4, 2) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     // Set fixed arguments
     const arg0 = lean.boxUsize(42);
     const arg1 = lean.boxUsize(84);
-    
+
     lean.closureSet(closure, 0, arg0);
     lean.closureSet(closure, 1, arg1);
-    
+
     // Get arguments back
     const retrieved0 = lean.closureGet(closure, 0);
     const retrieved1 = lean.closureGet(closure, 1);
-    
+
     try testing.expectEqual(@as(usize, 42), lean.unboxUsize(retrieved0));
     try testing.expectEqual(@as(usize, 84), lean.unboxUsize(retrieved1));
 }
@@ -1578,15 +1582,15 @@ test "closure: closureArgCptr pointer access" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x3000);
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 5, 3) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     // Set arguments
     lean.closureSet(closure, 0, lean.boxUsize(10));
     lean.closureSet(closure, 1, lean.boxUsize(20));
     lean.closureSet(closure, 2, lean.boxUsize(30));
-    
+
     // Access via pointer
     const args = lean.closureArgCptr(closure);
-    
+
     try testing.expectEqual(@as(usize, 10), lean.unboxUsize(args[0]));
     try testing.expectEqual(@as(usize, 20), lean.unboxUsize(args[1]));
     try testing.expectEqual(@as(usize, 30), lean.unboxUsize(args[2]));
@@ -1597,7 +1601,7 @@ test "closure: zero fixed arguments" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x4000);
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 2, 0) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     try testing.expectEqual(@as(u16, 2), lean.closureArity(closure));
     try testing.expectEqual(@as(u16, 0), lean.closureNumFixed(closure));
 }
@@ -1607,10 +1611,10 @@ test "closure: fully saturated" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x5000);
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 2, 2) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     lean.closureSet(closure, 0, lean.boxUsize(100));
     lean.closureSet(closure, 1, lean.boxUsize(200));
-    
+
     // When arity == num_fixed, closure is fully saturated
     const arity = lean.closureArity(closure);
     const fixed = lean.closureNumFixed(closure);
@@ -1621,38 +1625,38 @@ test "closure: reference counting for captured objects" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x6000);
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 3, 1) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     // Create an object to capture
     const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
     _ = lean.objectRc(obj); // Just to use it
-    
+
     // Capture it in closure (closureSet takes ownership)
     lean.closureSet(closure, 0, obj);
-    
+
     // Object is now owned by closure, we shouldn't dec_ref it
     // When closure is freed, it will dec_ref the captured object
 }
 
 test "closure: multiple closures sharing object" {
     const mock_fn: *const anyopaque = @ptrFromInt(0x7000);
-    
+
     const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(obj);
-    
+
     // Create two closures that will share the object
     const closure1 = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 2, 1) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure1);
-    
+
     const closure2 = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 2, 1) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure2);
-    
+
     // Share the object between closures
     lean.lean_inc_ref(obj); // One ref for closure1
     lean.closureSet(closure1, 0, obj);
-    
+
     lean.lean_inc_ref(obj); // One ref for closure2
     lean.closureSet(closure2, 0, obj);
-    
+
     // obj now has rc=3: our defer + closure1 + closure2
     try testing.expectEqual(@as(i32, 3), lean.objectRc(obj));
 }
@@ -1660,15 +1664,15 @@ test "closure: multiple closures sharing object" {
 test "closure: partial application scenario" {
     // Simulate currying: f(a, b, c) => f(a) returns closure g(b, c)
     const mock_fn: *const anyopaque = @ptrFromInt(0x8000);
-    
+
     // First application: bind 'a'
     const partial1 = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), 3, 1) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(partial1);
     lean.closureSet(partial1, 0, lean.boxUsize(10));
-    
+
     try testing.expectEqual(@as(u16, 3), lean.closureArity(partial1));
     try testing.expectEqual(@as(u16, 1), lean.closureNumFixed(partial1));
-    
+
     // Remaining params: 3 - 1 = 2
     const remaining = lean.closureArity(partial1) - lean.closureNumFixed(partial1);
     try testing.expectEqual(@as(u16, 2), remaining);
@@ -1679,13 +1683,13 @@ test "closure: iterate over captured args" {
     const num_args: u16 = 5;
     const closure = lean.lean_alloc_closure(@ptrCast(@constCast(mock_fn)), num_args, num_args) orelse return error.AllocationFailed;
     defer lean.lean_dec_ref(closure);
-    
+
     // Populate all arguments
     var i: usize = 0;
     while (i < num_args) : (i += 1) {
         lean.closureSet(closure, i, lean.boxUsize(i * 10));
     }
-    
+
     // Verify via iteration
     const args = lean.closureArgCptr(closure);
     i = 0;
@@ -1701,9 +1705,9 @@ test "io: ioResultGetValue extraction" {
     const value = lean.boxUsize(12345);
     const result = lean.ioResultMkOk(value);
     defer lean.lean_dec_ref(result);
-    
+
     try testing.expect(lean.ioResultIsOk(result));
-    
+
     const extracted = lean.ioResultGetValue(result);
     try testing.expectEqual(@as(usize, 12345), lean.unboxUsize(extracted));
 }
@@ -1712,10 +1716,10 @@ test "io: error result with string message" {
     const err_msg = lean.lean_mk_string_from_bytes("operation failed", 16);
     const result = lean.ioResultMkError(err_msg);
     defer lean.lean_dec_ref(result);
-    
+
     try testing.expect(lean.ioResultIsError(result));
     try testing.expect(!lean.ioResultIsOk(result));
-    
+
     // Extract error message
     const extracted = lean.ioResultGetValue(result);
     try testing.expect(lean.isString(extracted));
@@ -1725,12 +1729,12 @@ test "io: success with complex object" {
     const obj = lean.allocCtor(1, 2, 0) orelse return error.AllocationFailed;
     lean.ctorSet(obj, 0, lean.boxUsize(42));
     lean.ctorSet(obj, 1, lean.boxUsize(84));
-    
+
     const result = lean.ioResultMkOk(obj);
     defer lean.lean_dec_ref(result);
-    
+
     try testing.expect(lean.ioResultIsOk(result));
-    
+
     const extracted = lean.ioResultGetValue(result);
     try testing.expect(lean.isCtor(extracted));
     try testing.expectEqual(@as(usize, 42), lean.unboxUsize(lean.ctorGet(extracted, 0)));
@@ -1739,10 +1743,10 @@ test "io: success with complex object" {
 test "io: result tag correctness" {
     const ok_result = lean.ioResultMkOk(lean.boxUsize(1));
     defer lean.lean_dec_ref(ok_result);
-    
+
     const err_result = lean.ioResultMkError(lean.boxUsize(2));
     defer lean.lean_dec_ref(err_result);
-    
+
     // Tag 0 = ok, Tag 1 = error
     try testing.expectEqual(@as(u8, 0), lean.objectTag(ok_result));
     try testing.expectEqual(@as(u8, 1), lean.objectTag(err_result));
@@ -1751,15 +1755,15 @@ test "io: result tag correctness" {
 test "io: round-trip through result" {
     const original = lean.allocArray(5) orelse return error.AllocationFailed;
     lean.arraySet(original, 0, lean.boxUsize(99));
-    
+
     // Wrap in success
     const result = lean.ioResultMkOk(original);
     defer lean.lean_dec_ref(result);
-    
+
     // Extract and verify
     try testing.expect(lean.ioResultIsOk(result));
     const extracted = lean.ioResultGetValue(result);
-    
+
     try testing.expect(lean.isArray(extracted));
     try testing.expectEqual(@as(usize, 99), lean.unboxUsize(lean.arrayGet(extracted, 0)));
 }
@@ -1768,18 +1772,18 @@ test "io: nested results" {
     // Create Result (Result A)
     const inner_value = lean.boxUsize(42);
     const inner_result = lean.ioResultMkOk(inner_value);
-    
+
     const outer_result = lean.ioResultMkOk(inner_result);
     defer lean.lean_dec_ref(outer_result);
-    
+
     // Unwrap outer
     try testing.expect(lean.ioResultIsOk(outer_result));
     const middle = lean.ioResultGetValue(outer_result);
-    
+
     // Unwrap inner
     try testing.expect(lean.ioResultIsOk(middle));
     const final_value = lean.ioResultGetValue(middle);
-    
+
     try testing.expectEqual(@as(usize, 42), lean.unboxUsize(final_value));
 }
 
@@ -1790,14 +1794,14 @@ test "io: error propagation pattern" {
         "permission denied",
         "disk full",
     };
-    
+
     for (errors) |err_str| {
         const msg = lean.lean_mk_string_from_bytes(err_str.ptr, err_str.len);
         const result = lean.ioResultMkError(msg);
         defer lean.lean_dec_ref(result);
-        
+
         try testing.expect(lean.ioResultIsError(result));
-        
+
         const extracted = lean.ioResultGetValue(result);
         try testing.expect(lean.isString(extracted));
     }

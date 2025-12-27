@@ -1189,13 +1189,13 @@ pub inline fn closureSet(o: obj_arg, i: usize, v: obj_arg) void {
     const base: [*]u8 = @ptrCast(@alignCast(obj));
     const args_offset = @sizeOf(ClosureObject);
     const args: [*]obj_arg = @ptrCast(@alignCast(base + args_offset));
-    
+
     // Dec_ref old value if it exists
     const old = args[i];
     if (old) |old_obj| {
         lean_dec_ref(old_obj);
     }
-    
+
     args[i] = v;
 }
 
@@ -1203,7 +1203,7 @@ pub inline fn closureSet(o: obj_arg, i: usize, v: obj_arg) void {
 ///
 /// ## Parameters
 /// - `fun` - Function pointer to invoke when closure saturated
-/// - `arity` - Total number of parameters function expects  
+/// - `arity` - Total number of parameters function expects
 /// - `num_fixed` - Number of arguments to store now (partial application)
 ///
 /// ## Returns
@@ -1217,24 +1217,31 @@ pub inline fn closureSet(o: obj_arg, i: usize, v: obj_arg) void {
 pub inline fn lean_alloc_closure(fun: *anyopaque, arity: u32, num_fixed: u32) obj_res {
     const size = @sizeOf(ClosureObject) + @sizeOf(?*anyopaque) * num_fixed;
     const obj = lean_alloc_object(size) orelse return null;
-    
+
     // Set header: tag = LeanClosure (245), other = 0
     const header: *ObjectHeader = @ptrCast(@alignCast(obj));
     header.m_tag = Tag.closure;
     header.m_other = 0;
-    
+
     // Set closure fields
     const closure: *ClosureObject = @ptrCast(@alignCast(obj));
     closure.m_fun = fun;
     closure.m_arity = @intCast(arity);
     closure.m_num_fixed = @intCast(num_fixed);
+
+    // Zero-initialize fixed arguments array for safety
+    // This prevents closureSet from dec_ref'ing garbage values
+    const args_offset = @sizeOf(ClosureObject);
+    const args: [*]obj_arg = @ptrCast(@alignCast(@as([*]u8, @ptrCast(@alignCast(obj))) + args_offset));
+    for (0..num_fixed) |i| {
+        args[i] = null;
+    }
     
     return obj;
 }
 
-/// Get a pointer to the fixed arguments array of a closure.
+/// Get direct pointer to the array of fixed arguments in a closure.
 ///
-/// Returns a pointer to the beginning of the captured arguments array.
 /// Useful for bulk operations or iteration.
 ///
 /// ## Precondition

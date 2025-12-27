@@ -25,11 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Access patterns: byte array iteration, float array operations
   - Edge cases: empty arrays, array type distinction
   - Performance: byte access baseline with cache-aware thresholds
-- **Phase 4: Closures & Advanced IO**: Added 15 new tests, bringing total from 93 to 108 tests, covering:
+- **Phase 4: Closures & Advanced IO**: Added 16 new tests, bringing total from 92 to 108 tests, covering:
   - **ClosureObject type definition** with complete struct layout matching Lean runtime
-  - **`lean_alloc_closure` function**: Inline implementation matching lean.h for zero-cost closure allocation
+  - **`lean_alloc_closure` function**: Inline implementation matching lean.h for zero-cost closure allocation with zero-initialized fixed arguments
   - **7 closure accessor functions**: `closureArity`, `closureNumFixed`, `closureFun`, `closureGet`, `closureSet`, `closureArgCptr`, plus `isClosure` type check
-  - **Closure tests (10 tests)**: allocation, metadata access, fixed argument get/set, pointer access, zero/full saturation, refcounting, partial application, iteration
+  - **Closure tests (11 tests)**: allocation, metadata access, fixed argument get/set, pointer access, zero/full saturation, refcounting, partial application, iteration
   - **Advanced IO result tests (5 tests)**: value extraction, error messages, complex objects, tag correctness, error propagation
 - Type inspection API functions for runtime type checking with null safety documentation
 - Complete scalar field accessor API for constructor objects with alignment safety documentation
@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Performance benchmarking infrastructure with CI-aware thresholds
 
 ### Changed
-- Expanded test coverage from ~25 tests to **108 tests** (332% increase)
+- Expanded test coverage from ~25 tests to **108 tests** (332% increase from original baseline)
 - Enhanced memory safety validation with complex reference counting scenarios
 - Improved documentation with null safety warnings and alignment considerations
 - Performance tests now adapt thresholds based on CI environment detection
