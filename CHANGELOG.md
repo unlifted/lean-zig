@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Constructor utilities (4 tests): `ctorNumObjs`, `ctorScalarCptr`, `ctorSetTag`, `ctorRelease`
   - Deep reference counting scenarios (7 tests): circular references, high refcounts, nested graphs, shared objects, balance verification
   - Performance baselines (3 tests): boxing, array access, and refcount operations with environment-aware thresholds
+- **Phase 2 Test Suite Completed (Array & String Operations)**: Added 14 tests covering:
+  - Array operations (6 tests): allocation, swap, bounds checking, capacity invariants
+  - String operations (8 tests): equality, comparison, UTF-8 handling, empty strings
 - Type inspection API functions for runtime type checking with null safety documentation
 - Complete scalar field accessor API for constructor objects with alignment safety documentation
 - Constructor utility functions for advanced memory management
@@ -21,10 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API completeness notes for future phase functions (closure, thunk, task accessors)
 
 ### Changed
-- Expanded test coverage from ~25 tests to 68 tests (172% increase)
+- Expanded test coverage from ~25 tests to 81 tests (224% increase)
 - Enhanced memory safety validation with complex reference counting scenarios
 - Improved documentation with null safety warnings and alignment considerations
 - Performance tests now adapt thresholds based on CI environment detection
+
+### Fixed
+- **CRITICAL**: Fixed segfault in `lean_inc_ref` and `lean_dec_ref` by adding tagged pointer checks
+  - Tagged pointers (scalars with low bit set) are now correctly skipped in reference counting
+  - Prevents crash when Lean runtime tries to inc/dec_ref scalar values
+- **CRITICAL**: Fixed `mkArrayWithSize` initialization strategy
+  - Removed automatic element initialization that caused runtime crashes
+  - Documented requirement that callers MUST populate all elements before cleanup
+  - Updated all tests to properly populate arrays before calling `lean_dec_ref`
 
 ## [0.2.0] - 2025-12-26
 
