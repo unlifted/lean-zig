@@ -98,4 +98,7 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: lake script run test
+        run: |
+          $leanPath = (lean --print-prefix)
+          $env:PATH = "$leanPath\bin;$env:PATH"
+          lake script run test
