@@ -281,7 +281,7 @@ Add a benchmark if the function is critical:
 
 ```zig
 test "benchmark boxing performance" {
-    if (builtin.mode != .ReleaseFast) return error.SkipZigLibcTests;
+    if (builtin.mode != .ReleaseFast) return error.SkipBenchmarkInDebugMode;
     
     var timer = try std.time.Timer.start();
     const iterations = 10_000_000;

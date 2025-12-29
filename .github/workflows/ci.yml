@@ -11,6 +11,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      # Run all matrix combinations even if some fail, to identify which specific OS/Lean/Zig combinations have issues
       fail-fast: false
       matrix:
         # PRs: Only Linux with latest versions (1 job for fast feedback)
