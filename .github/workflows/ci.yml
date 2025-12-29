@@ -59,6 +59,13 @@ jobs:
         run: |
           elan toolchain install leanprover/lean4:v${{ matrix.lean-version }}
           elan default leanprover/lean4:v${{ matrix.lean-version }}
+          Write-Host "=== Lean installation diagnostics ==="
+          $leanPath = (lean --print-prefix)
+          Write-Host "Lean prefix: $leanPath"
+          Write-Host "`nContents of lib/lean:"
+          Get-ChildItem "$leanPath\lib\lean" -ErrorAction SilentlyContinue | Select-Object Name
+          Write-Host "`nContents of bin:"
+          Get-ChildItem "$leanPath\bin" -Filter *.dll -ErrorAction SilentlyContinue | Select-Object Name
 
       - name: Update Lake manifest (Unix)
         if: runner.os != 'Windows'
