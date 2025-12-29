@@ -64,15 +64,19 @@ pub fn build(b: *std.Build) void {
     // Link against Lean runtime
     lib.linkLibC();
     lib.linkLibCpp();
-    const lean_lib = b.pathJoin(&[_][]const u8{ lean_sysroot, "lib", "lean" });
-    lib.addLibraryPath(.{ .cwd_relative = lean_lib });
-    // On Windows, DLLs may also be in bin directory
+    
     if (target.result.os.tag == .windows) {
+        // On Windows, static libraries are in bin/ directory with lib prefix
         const lean_bin = b.pathJoin(&[_][]const u8{ lean_sysroot, "bin" });
-        lib.addLibraryPath(.{ .cwd_relative = lean_bin });
+        lib.addObjectFile(.{ .cwd_relative = b.pathJoin(&[_][]const u8{ lean_bin, "libleanrt.a" }) });
+        lib.addObjectFile(.{ .cwd_relative = b.pathJoin(&[_][]const u8{ lean_bin, "libleanshared.dll.a" }) });
+    } else {
+        // On Unix, use standard library search
+        const lean_lib = b.pathJoin(&[_][]const u8{ lean_sysroot, "lib", "lean" });
+        lib.addLibraryPath(.{ .cwd_relative = lean_lib });
+        lib.linkSystemLibrary("leanrt");
+        lib.linkSystemLibrary("leanshared");
     }
-    lib.linkSystemLibrary("leanrt");
-    lib.linkSystemLibrary("leanshared");
 
     b.installArtifact(lib);
 
@@ -90,14 +94,19 @@ pub fn build(b: *std.Build) void {
     // Link test executable against Lean runtime
     tests.linkLibC();
     tests.linkLibCpp();
-    tests.addLibraryPath(.{ .cwd_relative = lean_lib });
-    // On Windows, DLLs may also be in bin directory
+    
     if (target.result.os.tag == .windows) {
+        // On Windows, static libraries are in bin/ directory with lib prefix
         const lean_bin = b.pathJoin(&[_][]const u8{ lean_sysroot, "bin" });
-        tests.addLibraryPath(.{ .cwd_relative = lean_bin });
+        tests.addObjectFile(.{ .cwd_relative = b.pathJoin(&[_][]const u8{ lean_bin, "libleanrt.a" }) });
+        tests.addObjectFile(.{ .cwd_relative = b.pathJoin(&[_][]const u8{ lean_bin, "libleanshared.dll.a" }) });
+    } else {
+        // On Unix, use standard library search
+        const lean_lib = b.pathJoin(&[_][]const u8{ lean_sysroot, "lib", "lean" });
+        tests.addLibraryPath(.{ .cwd_relative = lean_lib });
+        tests.linkSystemLibrary("leanrt");
+        tests.linkSystemLibrary("leanshared");
     }
-    tests.linkSystemLibrary("leanrt");
-    tests.linkSystemLibrary("leanshared");
 
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run library tests");
