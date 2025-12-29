@@ -2,13 +2,26 @@
 
 [![CI](https://github.com/efvincent/lean-zig/actions/workflows/ci.yml/badge.svg)](https://github.com/efvincent/lean-zig/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Lean Version](https://img.shields.io/badge/Lean-4.26.0-blue.svg)](https://github.com/leanprover/lean4)
-[![Zig Version](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/)
+[![Lean Version](https://img.shields.io/badge/Lean-4.25.0--4.26.0-blue.svg)](https://github.com/leanprover/lean4)
+[![Zig Version](https://img.shields.io/badge/Zig-0.14.0--0.15.2-orange.svg)](https://ziglang.org/)
+[![Platforms](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/efvincent/lean-zig)
 
 A comprehensive library providing complete Zig bindings for the Lean 4 runtime, enabling seamless interoperability between Lean and Zig without C shims.
 
+**🚀 Multi-Version & Multi-Platform Support**: One library version supports multiple Lean versions (4.25.0-4.26.0), multiple Zig versions (0.14.0-0.15.2), and all major platforms (Linux, macOS, Windows) - tested with 12 combinations in CI. No need for separate releases per version or platform!
+
+## Supported Platforms
+
+✅ **Linux** (Ubuntu, tested on ubuntu-latest)  
+✅ **macOS** (Intel & Apple Silicon, tested on macos-latest)  
+✅ **Windows** (tested on windows-latest)
+
+All platforms are tested in CI with the full version matrix (Lean 4.25.0-4.26.0 × Zig 0.14.0-0.15.2).
+
 ## Features
 
+- **Multi-Version Support**: Single codebase works with Lean 4.25.0-4.26.0 and Zig 0.14.0-0.15.2 - no separate releases needed
+- **Cross-Platform**: Works on Linux, macOS (Intel & Apple Silicon), and Windows - all tested in CI
 - **Hybrid JIT Strategy**: Auto-generates bindings from your Lean installation at build time - zero maintenance when Lean updates
 - **Version Sync**: Bindings always match your installed Lean version
 - **Pure Zig**: No C shim required - performance-critical functions manually inlined in native Zig
@@ -18,7 +31,7 @@ A comprehensive library providing complete Zig bindings for the Lean 4 runtime, 
 - **Maximum Performance**: Hot-path functions inlined, cold-path forwarded - best of both worlds
 - **Build Integration**: Automatic integration with Lake build system via `build.zig`
 - **Comprehensive Documentation**: Complete API reference with examples and best practices
-- **Extensive Tests**: Full unit test suite covering all major API functions
+- **Extensive Tests**: 117+ tests covering all major API functions across all platforms
 
 ## Architecture
 

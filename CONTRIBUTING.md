@@ -125,6 +125,207 @@ These functions are **manually inlined** because they're hot-path operations (ca
 3. Rarely called (once per operation, not per element)
 4. Uses platform-specific features (atomics, thread-local storage)
 
+### How to Inline a Function
+
+When you need to manually inline a function from `lean.h`, follow this process:
+
+#### Step 1: Identify the Function in lean.h
+
+Find the `static inline` function in Lean's `lean.h`. Example:
+
+```c
+// From lean.h
+static inline uintptr_t lean_box(size_t n) {
+    return (n << 1) | 1;
+}
+```
+
+#### Step 2: Translate to Zig
+
+Create an equivalent inline Zig function. Follow existing patterns in the codebase:
+
+**Pattern A: Simple Tagged Pointer Operations** (see `Zig/boxing.zig`)
+
+```zig
+/// Box a `usize` as a Lean `Nat` or `USize`.
+///
+/// Uses tagged pointer encoding: `(n << 1) | 1`
+///
+/// ## Panics
+/// Panics if `n >= 2^63` (value too large for tagged pointer).
+///
+/// ## Performance
+/// **1-2 CPU instructions**: 1 shift + 1 OR
+pub inline fn boxUsize(n: usize) obj_res {
+    if (n >= (1 << 63)) {
+        @panic("boxUsize: value exceeds 63-bit maximum");
+    }
+    const tagged = (n << 1) | 1;
+    return @ptrFromInt(tagged);
+}
+```
+
+**Key elements:**
+- `pub inline fn` - makes it inline and public
+- Doc comment with `///` explaining behavior
+- Performance note in doc comment
+- Explicit type conversions (`@ptrFromInt`)
+- Safety checks where appropriate
+
+**Pattern B: Pointer Arithmetic & Field Access** (see `Zig/memory.zig`, `Zig/constructors.zig`)
+
+```zig
+/// Get the tag byte from an object.
+///
+/// ## Performance
+/// **2 CPU instructions**: 1 cast + 1 load
+pub inline fn objectTag(o: b_obj_arg) u8 {
+    const hdr: *const Object = @ptrCast(@alignCast(o));
+    return hdr.m_tag;
+}
+
+/// Get object field at index (borrowed reference).
+///
+/// ## Preconditions
+/// - `o` must be a constructor with at least `i+1` object fields
+/// - `i` must be < `ctorNumObjs(o)`
+///
+/// ## Performance
+/// **2-3 CPU instructions**: arithmetic + load
+pub inline fn ctorGet(o: b_obj_arg, i: usize) obj_arg {
+    const base: [*]obj_arg = @ptrCast(@alignCast(o));
+    return base[@sizeOf(Object) / @sizeOf(obj_arg) + i];
+}
+```
+
+**Key elements:**
+- Use `@ptrCast` and `@alignCast` for pointer conversions
+- Document preconditions clearly
+- Use pointer arithmetic for offsets
+- Match the C implementation's memory layout exactly
+
+**Pattern C: Reference Counting with Fast/Cold Paths** (see `Zig/memory.zig`)
+
+```zig
+/// Increment an object's reference count.
+///
+/// **Hot path**: Inline function with fast path for ST objects.
+///
+/// ## Safety
+/// - NULL pointers are safely ignored
+/// - Tagged pointers (scalars) are safely ignored
+pub inline fn lean_inc_ref(o: obj_arg) void {
+    const obj = o orelse return;
+    // Tagged pointers (scalars) don't have reference counts
+    if (isScalar(obj)) return;
+
+    const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));
+    // Fast path: single-threaded object
+    if (hdr.m_rc > 0) {
+        hdr.m_rc += 1;
+    }
+    // Could add MT path here if needed
+}
+```
+
+**Key elements:**
+- Check for null first (`orelse return`)
+- Check for tagged pointers (`isScalar`)
+- Fast path inline, delegate complex cases to runtime
+
+#### Step 3: Add to Appropriate Module
+
+Place the function in the correct module:
+
+- **`Zig/boxing.zig`** - Boxing/unboxing scalars
+- **`Zig/memory.zig`** - Reference counting, type checks
+- **`Zig/constructors.zig`** - Constructor field access
+- **`Zig/arrays.zig`** - Array operations
+- **`Zig/strings.zig`** - String operations
+- **`Zig/scalar_arrays.zig`** - Scalar array operations
+
+#### Step 4: Re-export from lean.zig
+
+Add a public re-export in `Zig/lean.zig`:
+
+```zig
+// Re-export from modules
+pub const boxUsize = boxing.boxUsize;
+pub const unboxUsize = boxing.unboxUsize;
+pub const lean_inc_ref = memory.lean_inc_ref;
+pub const ctorGet = constructors.ctorGet;
+```
+
+#### Step 5: Add Tests
+
+Create tests in the appropriate test file under `Zig/tests/`:
+
+```zig
+// In Zig/tests/boxing_test.zig
+test "boxUsize and unboxUsize round-trip" {
+    const values = [_]usize{ 0, 1, 42, 100, 1000, 1_000_000 };
+    
+    for (values) |val| {
+        const boxed = lean.boxUsize(val);
+        try testing.expect(lean.isScalar(boxed));
+        
+        const unboxed = lean.unboxUsize(boxed);
+        try testing.expectEqual(val, unboxed);
+    }
+}
+```
+
+#### Step 6: Verify Performance
+
+Add a benchmark if the function is critical:
+
+```zig
+test "benchmark boxing performance" {
+    if (builtin.mode != .ReleaseFast) return error.SkipBenchmarkInDebugMode;
+    
+    var timer = try std.time.Timer.start();
+    const iterations = 10_000_000;
+    var i: usize = 0;
+    var sum: usize = 0;
+    
+    while (i < iterations) : (i += 1) {
+        const boxed = lean.boxUsize(i & 0xFF);
+        sum +%= lean.unboxUsize(boxed);
+    }
+    
+    const elapsed_ns = timer.read();
+    const ns_per_op = elapsed_ns / iterations;
+    
+    // Should be 1-2ns per operation
+    try testing.expect(ns_per_op < 5);
+}
+```
+
+#### Common Patterns Reference
+
+For more examples, study these existing inline implementations:
+
+- **Tagged pointer encoding**: `Zig/boxing.zig` - `boxUsize`, `unboxUsize`
+- **Reference counting**: `Zig/memory.zig` - `lean_inc_ref`, `lean_dec_ref`
+- **Struct field access**: `Zig/memory.zig` - `objectTag`, `objectRc`
+- **Array access**: `Zig/arrays.zig` - `arrayUget`, `arrayGet`
+- **Constructor access**: `Zig/constructors.zig` - `ctorGet`, `ctorSet`
+- **Pointer arithmetic**: `Zig/constructors.zig` - `ctorScalarCptr`
+
+#### Verification Checklist
+
+- [ ] Function matches C implementation behavior exactly
+- [ ] Uses `pub inline fn` declaration
+- [ ] Has complete doc comment with `///`
+- [ ] Documents preconditions and performance
+- [ ] Uses explicit casts (`@ptrCast`, `@alignCast`, `@intFromPtr`)
+- [ ] Handles null pointers if applicable
+- [ ] Handles tagged pointers if applicable
+- [ ] Added to appropriate module file
+- [ ] Re-exported from `Zig/lean.zig`
+- [ ] Has test coverage in `Zig/tests/`
+- [ ] Performance validated (for hot-path functions)
+
 ### Performance Testing
 
 After changes to hot-path functions, verify performance:
