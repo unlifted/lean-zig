@@ -18,6 +18,45 @@ A comprehensive library providing complete Zig bindings for the Lean 4 runtime, 
 
 All platforms are tested in CI with the full version matrix (Lean 4.25.0-4.26.0 × Zig 0.14.0-0.15.2).
 
+## Version Support Policy
+
+### Supported Versions (Tested in CI)
+
+**Lean**: 4.25.0, 4.26.0  
+**Zig**: 0.14.0, 0.15.2  
+**Platforms**: Linux (ubuntu-latest), macOS (macos-latest), Windows (windows-latest)
+
+All combinations (12 total: 3 OS × 2 Lean × 2 Zig) are tested on every push to main.
+
+### Compatibility Guarantee
+
+- **Lean 4.25.0+**: Officially supported. The hybrid JIT strategy auto-generates bindings from your Lean installation, so newer stable versions likely work without changes.
+- **Zig 0.14.0+**: Officially supported. The library targets stable Zig releases.
+- **Older versions**: May work but are not tested. PRs welcome to expand support.
+
+### Pre-release Versions (Nightly/RC)
+
+Pre-release versions (Lean nightly, Zig master) are **not supported** in the main CI to avoid false failures from upstream instability. However:
+
+- A separate [Nightly CI workflow](https://github.com/efvincent/lean-zig/actions/workflows/nightly.yml) tests against pre-release versions weekly for early warning
+- Nightly failures don't block releases - they indicate upcoming compatibility work needed
+- If you use pre-release versions, please report issues!
+
+### When to Expect Breaking Changes
+
+**This library follows semantic versioning**:
+- **MAJOR** (1.0.0): Lean runtime ABI changes or removed functions
+- **MINOR** (0.x.0): New features, backward-compatible
+- **PATCH** (0.x.y): Bug fixes only
+
+**Note**: Lean does not guarantee C ABI stability between minor versions. We pin tested versions in CI and document when updates require changes.
+
+### Road to 1.0
+
+This library will remain in **0.x.x** (pre-1.0) until **Zig itself reaches 1.0**. This reflects the reality that Zig's language and build system are still evolving. Once Zig stabilizes at 1.0, we will evaluate this library's API stability and release 1.0 accordingly.
+
+**Current status**: Zig is at 0.15.x, targeting 1.0 in 2025-2026. We will publish 1.x.x when Zig reaches 1.x.x.
+
 ## Features
 
 - **Multi-Version Support**: Single codebase works with Lean 4.25.0-4.26.0 and Zig 0.14.0-0.15.2 - no separate releases needed

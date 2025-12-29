@@ -13,6 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.3.1] - 2025-12-29
+
+### Fixed
+- **CRITICAL**: Fixed Windows CI failures across all Lean/Zig version combinations
+  - Fixed PowerShell `-NoPrompt` syntax error (requires explicit boolean value)
+  - Implemented platform-specific library linking for Windows MinGW
+  - Linked 6 required Windows libraries: libleanrt.a, libleanshared.dll.a, libleanmanifest.a, libInit_shared.dll.a, libLean.a, libgmp.a
+  - Windows libraries now correctly located in `lib/lean/` and `lib/` directories
+  - All 4 Windows CI jobs now passing (2 Lean versions × 2 Zig versions)
+
+### Changed
+- Refactored `build.zig` to eliminate code duplication with `linkLeanRuntime()` helper function
+- Improved build system maintainability with centralized platform-specific linking logic
+
+### Added
+- Nightly CI workflow for early detection of compatibility issues with pre-release versions
+- Explicit version support policy in README
+
 ## [0.3.0] - 2025-12-27
 
 **Complete Core Runtime FFI Coverage** - All Lean 4 runtime object types now fully supported with comprehensive test coverage.
