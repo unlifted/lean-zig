@@ -88,6 +88,7 @@ const thunks_mod = @import("thunks.zig");
 const tasks_mod = @import("tasks.zig");
 const references_mod = @import("references.zig");
 const io_results_mod = @import("io_results.zig");
+const external_mod = @import("external.zig");
 
 // ============================================================================
 // Type Re-exports
@@ -102,6 +103,8 @@ pub const ScalarArrayObject = types_mod.ScalarArrayObject;
 pub const ClosureObject = types_mod.ClosureObject;
 pub const ThunkObject = types_mod.ThunkObject;
 pub const RefObject = types_mod.RefObject;
+pub const ExternalClass = types_mod.ExternalClass;
+pub const ExternalObject = types_mod.ExternalObject;
 
 pub const obj_arg = types_mod.obj_arg;
 pub const b_obj_arg = types_mod.b_obj_arg;
@@ -269,6 +272,16 @@ pub const ioResultMkError = io_results_mod.ioResultMkError;
 pub const ioResultIsOk = io_results_mod.ioResultIsOk;
 pub const ioResultIsError = io_results_mod.ioResultIsError;
 pub const ioResultGetValue = io_results_mod.ioResultGetValue;
+
+// ============================================================================
+// External Object Re-exports
+// ============================================================================
+
+pub const registerExternalClass = external_mod.registerExternalClass;
+pub const allocExternal = external_mod.allocExternal;
+pub const getExternalData = external_mod.getExternalData;
+pub const getExternalClass = external_mod.getExternalClass;
+pub const setExternalData = external_mod.setExternalData;
 
 // ============================================================================
 // lean_raw Import

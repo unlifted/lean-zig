@@ -151,6 +151,36 @@ pub const RefObject = extern struct {
     m_value: obj_arg,
 };
 
+/// External object class descriptor.
+///
+/// Defines behavior for external (foreign) objects:
+/// - `m_finalize`: Called when refcount reaches 0 (cleanup native resources)
+/// - `m_foreach`: Called during GC to visit Lean objects held by foreign data
+///
+/// Register with `lean_register_external_class` before use.
+///
+/// Matches `lean_external_class` in `lean/lean.h`.
+pub const ExternalClass = extern struct {
+    m_finalize: ?*const fn (*anyopaque) callconv(.C) void,
+    m_foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.C) void,
+};
+
+/// External (foreign) object layout.
+///
+/// Wraps arbitrary native data as a Lean object. The `m_data` field
+/// points to your Zig/C structure. When the object's refcount reaches 0,
+/// the class's finalizer is called to clean up native resources.
+///
+/// - `m_class`: External class descriptor (defines finalization behavior)
+/// - `m_data`: Pointer to your native data
+///
+/// Matches `lean_external_object` in `lean/lean.h`.
+pub const ExternalObject = extern struct {
+    m_header: ObjectHeader,
+    m_class: *ExternalClass,
+    m_data: *anyopaque,
+};
+
 // ============================================================================
 // Ownership Semantics
 // ============================================================================
