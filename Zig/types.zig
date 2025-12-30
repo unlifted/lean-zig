@@ -161,8 +161,8 @@ pub const RefObject = extern struct {
 ///
 /// Matches `lean_external_class` in `lean/lean.h`.
 pub const ExternalClass = extern struct {
-    m_finalize: ?*const fn (*anyopaque) callconv(.C) void,
-    m_foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.C) void,
+    m_finalize: ?*const fn (*anyopaque) callconv(.c) void,
+    m_foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.c) void,
 };
 
 /// External (foreign) object layout.

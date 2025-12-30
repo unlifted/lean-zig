@@ -50,3 +50,7 @@ test "Performance Benchmarks" {
 test "Advanced Features" {
     _ = @import("tests/advanced_test.zig");
 }
+
+test "External Objects" {
+    _ = @import("tests/external_test.zig");
+}

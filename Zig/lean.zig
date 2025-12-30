@@ -277,6 +277,7 @@ pub const ioResultGetValue = io_results_mod.ioResultGetValue;
 // External Object Re-exports
 // ============================================================================
 
+pub const lean_register_external_class = external_mod.lean_register_external_class;
 pub const registerExternalClass = external_mod.registerExternalClass;
 pub const allocExternal = external_mod.allocExternal;
 pub const getExternalData = external_mod.getExternalData;

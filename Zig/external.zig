@@ -34,7 +34,7 @@
 //! export fn openFile(path: lean.obj_arg) lean.obj_res {
 //!     const handle = allocator.create(FileHandle);
 //!     handle.fd = std.fs.cwd().openFile(...);
-//!     
+//!
 //!     const ext = lean.allocExternal(file_class, handle);
 //!     return lean.ioResultMkOk(ext);
 //! }
@@ -58,6 +58,7 @@ pub const obj_res = types.obj_res;
 pub const Object = types.Object;
 pub const ExternalClass = types.ExternalClass;
 pub const ExternalObject = types.ExternalObject;
+pub const lean_alloc_object = memory.lean_alloc_object;
 
 // ============================================================================
 // External Functions from Lean Runtime
@@ -79,15 +80,10 @@ pub const ExternalObject = types.ExternalObject;
 ///
 /// ## Thread Safety
 /// Registration is thread-safe and typically done at startup.
-extern fn lean_register_external_class(
-    finalize: ?*const fn (*anyopaque) callconv(.C) void,
-    foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.C) void,
+pub extern fn lean_register_external_class(
+    finalize: ?*const fn (*anyopaque) callconv(.c) void,
+    foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.c) void,
 ) *ExternalClass;
-
-/// Low-level small object allocation.
-///
-/// Forward to Lean runtime. Used internally by `allocExternal`.
-extern fn lean_alloc_small_object(sz: usize) ?*anyopaque;
 
 // ============================================================================
 // Inline Wrapper Functions
@@ -127,8 +123,8 @@ extern fn lean_alloc_small_object(sz: usize) ?*anyopaque;
 /// ## Performance
 /// Called once per class at startup. Zero overhead after registration.
 pub inline fn registerExternalClass(
-    finalize: ?*const fn (*anyopaque) callconv(.C) void,
-    foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.C) void,
+    finalize: ?*const fn (*anyopaque) callconv(.c) void,
+    foreach: ?*const fn (*anyopaque, b_obj_arg) callconv(.c) void,
 ) *ExternalClass {
     return lean_register_external_class(finalize, foreach);
 }
@@ -149,6 +145,7 @@ pub inline fn registerExternalClass(
 ///
 /// ## Returns
 /// External object with refcount=1, or null on allocation failure.
+/// Return type is `obj_res` (which is `?*Object`), making this an optional pointer.
 ///
 /// ## Memory Ownership
 /// - The returned object has refcount=1 (caller owns initial reference)
@@ -162,17 +159,17 @@ pub inline fn registerExternalClass(
 /// ```zig
 /// const handle = allocator.create(FileHandle) catch return null;
 /// handle.* = FileHandle{ .fd = file, .path = path };
-/// 
+///
 /// const ext = lean.allocExternal(file_class, handle) orelse {
 ///     allocator.destroy(handle);
 ///     return error.AllocationFailed;
 /// };
 /// defer lean.lean_dec_ref(ext);
 /// ```
-pub inline fn allocExternal(class: *ExternalClass, data: *anyopaque) ?obj_res {
+pub inline fn allocExternal(class: *ExternalClass, data: *anyopaque) obj_res {
     // Allocate object header + class pointer + data pointer
     const obj_ptr = @as(?*ExternalObject, @ptrCast(@alignCast(
-        lean_alloc_small_object(@sizeOf(ExternalObject)),
+        lean_alloc_object(@sizeOf(ExternalObject)),
     ))) orelse return null;
 
     // Initialize fields
@@ -272,7 +269,7 @@ pub inline fn getExternalClass(o: b_obj_arg) *ExternalClass {
 /// ```
 pub inline fn setExternalData(o: obj_arg, data: *anyopaque) ?obj_res {
     const obj = o orelse return null;
-    
+
     if (memory.isExclusive(obj)) {
         // Exclusive - modify in place
         const ext: *ExternalObject = @ptrCast(@alignCast(obj));
@@ -282,7 +279,7 @@ pub inline fn setExternalData(o: obj_arg, data: *anyopaque) ?obj_res {
         // Shared - allocate new object
         const class = getExternalClass(obj);
         const new_obj = allocExternal(class, data);
-        
+
         memory.lean_dec_ref(obj);
         return new_obj;
     }
