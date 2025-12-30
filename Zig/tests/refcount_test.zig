@@ -150,3 +150,147 @@ test "refcount: multiple inc/dec maintaining balance" {
 
     try testing.expectEqual(@as(i32, 1), lean.objectRc(obj));
 }
+
+// ============================================================================
+// Multi-Threading Tests
+// ============================================================================
+
+test "MT object detection on ST object" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    // Initially ST (single-threaded)
+    try testing.expect(!lean.isMt(obj));
+    try testing.expectEqual(@as(i32, 1), lean.objectRc(obj));
+}
+
+test "markMt converts ST to MT" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    // Initially ST
+    try testing.expect(!lean.isMt(obj));
+
+    // Mark as MT
+    lean.markMt(obj);
+
+    // Now MT (refcount should be negative)
+    try testing.expect(lean.isMt(obj));
+    try testing.expect(lean.objectRc(obj) < 0);
+}
+
+test "bulk reference count increment" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+
+    // Bulk increment by 5 (total refcount = 6)
+    lean.lean_inc_ref_n(obj, 5);
+
+    // Now manually decrement 5 times
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        lean.lean_dec_ref(obj);
+    }
+
+    // Final cleanup (back to refcount 1, will be freed)
+    lean.lean_dec_ref(obj);
+}
+
+test "MT object sharing simulation" {
+    const obj = lean.allocCtor(0, 1, 0) orelse return error.AllocationFailed;
+
+    // Before sharing across threads, mark as MT
+    lean.markMt(obj);
+    try testing.expect(lean.isMt(obj));
+
+    // Simulate thread 1 taking reference
+    lean.lean_inc_ref(obj);
+
+    // Simulate thread 2 taking reference
+    lean.lean_inc_ref(obj);
+
+    // Simulate thread 1 finishing
+    lean.lean_dec_ref(obj);
+
+    // Simulate thread 2 finishing
+    lean.lean_dec_ref(obj);
+
+    // Final cleanup
+    lean.lean_dec_ref(obj);
+}
+
+test "scalars are never MT" {
+    const scalar = lean.boxUsize(42);
+
+    // Scalars don't have refcounts, so they can't be MT
+    try testing.expect(!lean.isMt(scalar));
+
+    // markMt on scalar should be safe (no-op)
+    lean.markMt(scalar);
+    try testing.expect(!lean.isMt(scalar));
+}
+
+test "MT status persists through inc operations" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+    defer lean.lean_dec_ref(obj);
+
+    // Mark as MT
+    lean.markMt(obj);
+    try testing.expect(lean.isMt(obj));
+
+    // Increment (doesn't change MT status)
+    lean.lean_inc_ref(obj);
+    try testing.expect(lean.isMt(obj)); // Still MT
+
+    // Decrement back (still MT since we used MT increment)
+    lean.lean_dec_ref(obj);
+
+    // Note: when the refcount drops back to 1, some Lean runtime implementations
+    // may clear the MT flag as an optimization. Because this behavior is
+    // implementation- and version-dependent, we intentionally do not assert
+    // anything about the MT status at this point; the purpose of this test is
+    // only to verify that MT status is preserved across inc/dec while the
+    // object is shared (refcount > 1).
+}
+
+test "null pointers safe in MT operations" {
+    const null_obj: ?*lean.Object = null;
+
+    // MT operations should handle null safely
+    lean.lean_inc_ref_n(null_obj, 1);
+
+    // Note: markMt is NOT null-safe (forwards to lean_mark_mt which requires non-null)
+    // This is documented in the API and function docstring.
+    // Calling markMt(null) would cause a segfault, so we skip it in this test.
+
+    const is_mt = lean.isMt(null_obj);
+    try testing.expect(!is_mt);
+}
+
+test "bulk increment with n=1 equivalent to regular" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+
+    // Bulk increment by 1
+    lean.lean_inc_ref_n(obj, 1);
+
+    // Now refcount is 2, decrement twice
+    lean.lean_dec_ref(obj);
+    lean.lean_dec_ref(obj);
+}
+
+test "bulk increment for MT object" {
+    const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
+
+    lean.markMt(obj);
+    try testing.expect(lean.isMt(obj));
+
+    // Bulk increment by 3 for MT object
+    lean.lean_inc_ref_n(obj, 3);
+
+    // Decrement 3 times
+    lean.lean_dec_ref(obj);
+    lean.lean_dec_ref(obj);
+    lean.lean_dec_ref(obj);
+
+    // Final cleanup
+    lean.lean_dec_ref(obj);
+}

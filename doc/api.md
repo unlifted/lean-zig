@@ -143,6 +143,92 @@ lean.lean_dec_ref(obj);  // Now rc = 1
 lean.lean_dec_ref(obj);  // Freed
 ```
 
+### Multi-Threading Support
+
+Lean objects support two refcounting modes:
+- **Single-threaded (ST)**: Fast, non-atomic refcount operations (refcount > 0)
+- **Multi-threaded (MT)**: Atomic refcount operations for thread safety (refcount < 0)
+
+#### `lean_inc_ref_n(o: obj_arg, n: usize) void`
+Bulk increment reference count by N.
+
+**When to use:**
+- Sharing objects across multiple threads
+- Bulk reference increments for performance
+- Creating N copies of a reference
+
+**Performance:** 2-4 CPU instructions depending on ST/MT status:
+- ST objects: Simple addition
+- MT objects: Atomic subtraction (MT refcounts are negative in Lean's model)
+
+**Safety:**
+- NULL pointers safely ignored
+- Tagged pointers (scalars) safely ignored
+- Uses atomic operations automatically for MT objects
+
+**Example:**
+```zig
+// Sharing object across 3 threads
+const obj = lean.allocCtor(0, 1, 0);
+lean.markMt(obj);  // Convert to MT before sharing
+
+// Increment refcount by 3 (one for each thread)
+lean.lean_inc_ref_n(obj, 3);
+
+// Each thread can now safely use the object
+// Each thread calls lean_dec_ref when done
+```
+
+#### `isMt(o: b_obj_arg) bool`
+Check if object uses multi-threaded reference counting.
+
+**Returns:** `true` if MT (refcount < 0), `false` if ST
+
+**Notes:**
+- Scalars are never MT (no refcount)
+- MT objects have atomic operation overhead
+- Check before assuming in-place mutation is safe
+
+**Example:**
+```zig
+if (lean.isMt(obj)) {
+    // Object is shared, must use thread-safe operations
+    lean.lean_inc_ref(obj);  // Uses atomics internally
+} else {
+    // Object is exclusive, can mutate directly
+    lean.ctorSet(obj, 0, new_value);
+}
+```
+
+#### `markMt(o: obj_arg) void`
+Convert single-threaded object to multi-threaded mode.
+
+**Preconditions:**
+- Must have exclusive access (refcount == 1)
+- Must be called BEFORE sharing across threads
+
+**Effect:**
+- Converts refcount to negative (MT mode)
+- All subsequent refcount operations use atomics
+- Conversion is permanent (cannot convert back to ST)
+
+**Example:**
+```zig
+const obj = lean.allocCtor(0, 1, 0);
+
+// Before sharing with other threads, mark as MT
+lean.markMt(obj);
+
+// Now safe to share across threads
+spawn_thread_with_object(obj);
+```
+
+**Important:** Failure to call `markMt` before sharing will cause data races and memory corruption!
+This critical safety requirement is also documented in the `markMt` docstring in
+[memory.zig](../Zig/memory.zig) (lines 147–164); both descriptions are kept in sync.
+
+**Note:** `markMt` does NOT handle null pointers safely. Passing null will cause a segfault.
+
 ---
 
 ## Type Inspection
