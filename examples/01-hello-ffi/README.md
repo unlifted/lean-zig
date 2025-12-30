@@ -28,7 +28,7 @@ package «hello-ffi» where
 
 -- Add lean-zig as a dependency
 require «lean-zig» from git
-  "https://github.com/efvincent/lean-zig" @ "main"
+  "https://github.com/unlifted/lean-zig" @ "main"
 
 @[default_target]
 lean_exe «hello-ffi» where

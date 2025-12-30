@@ -235,7 +235,7 @@ package «my-project» where
   version := v!"0.1.0"
 
 require «lean-zig» from git
-  "https://github.com/efvincent/lean-zig" @ "main"
+  "https://github.com/unlifted/lean-zig" @ "main"
 
 @[default_target]
 lean_exe «my-app» where
@@ -322,7 +322,7 @@ See [performance guide](../doc/design.md#performance) for details.
 - **Usage Guide**: [doc/usage.md](../doc/usage.md)
 - **Design Document**: [doc/design.md](../doc/design.md)
 - **Test Suite**: [Zig/tests/](../Zig/tests/) for more patterns
-- **Issues**: https://github.com/efvincent/lean-zig/issues
+- **Issues**: https://github.com/unlifted/lean-zig/issues
 
 ## Contributing Examples
 

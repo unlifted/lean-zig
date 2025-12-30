@@ -215,7 +215,7 @@ Update README badges to reflect version ranges:
 Show CI matrix status:
 
 ```markdown
-[![CI Matrix](https://github.com/efvincent/lean-zig/actions/workflows/ci.yml/badge.svg)](https://github.com/efvincent/lean-zig/actions/workflows/ci.yml)
+[![CI Matrix](https://github.com/unlifted/lean-zig/actions/workflows/ci.yml/badge.svg)](https://github.com/unlifted/lean-zig/actions/workflows/ci.yml)
 ```
 
 The badge shows overall status - green only if all matrix combinations pass.
@@ -273,7 +273,7 @@ Users control which versions they use:
 3. **lean-zig library**: Via Lake dependency:
    ```lean
    require «lean-zig» from git
-     "https://github.com/efvincent/lean-zig" @ "v0.3.0"
+     "https://github.com/unlifted/lean-zig" @ "v0.3.0"
    ```
 
 ### Build-Time Detection
