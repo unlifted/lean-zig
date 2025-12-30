@@ -16,7 +16,8 @@ Complete API documentation for the `lean.zig` module, organized by functional ca
 10. [Thunks](#thunks)
 11. [Tasks](#tasks)
 12. [References](#references)
-13. [IO Results](#io-results)
+13. [External Objects](#external-objects)
+14. [IO Results](#io-results)
 
 ---
 
@@ -82,6 +83,25 @@ Mutable reference for ST (state thread) monad.
 **Visibility:** Public (as of Phase 5) for advanced memory management.
 
 Direct access to the object header allows manual initialization of specialized object types (e.g., RefObject in tests). Use with caution - improper header initialization can cause runtime crashes.
+
+#### `ExternalClass`
+External class descriptor for managing native resources.
+
+**Fields:**
+- `m_finalize: ?*const fn(*anyopaque) callconv(.c) void` - Called when object freed
+- `m_foreach: ?*const fn(*anyopaque, b_obj_arg) callconv(.c) void` - GC visitor for held Lean objects
+
+**Usage:** Registered once per native type at startup. Finalizer cleans up resources when object's refcount reaches zero.
+
+#### `ExternalObject`
+Wrapper for arbitrary native data structures.
+
+**Fields:**
+- `m_header: Object` - Standard Lean object header
+- `m_class: *ExternalClass` - Class descriptor with finalizer
+- `m_data: *anyopaque` - Pointer to native data
+
+**Usage:** Wraps file handles, database connections, GPU buffers, or any native resource needing lifetime management.
 
 ### Ownership Types
 
@@ -738,6 +758,251 @@ def example : ST RealWorld Nat := do
 ```
 
 The Zig FFI operates on the underlying `RefObject` pointers.
+
+---
+
+## External Objects
+
+External objects wrap arbitrary native (Zig/C) data structures as Lean objects with custom finalization. Essential for FFI work with resources like file handles, database connections, sockets, and native data structures.
+
+### Object Structure
+
+See [`ExternalClass`](#externalclass) and [`ExternalObject`](#externalobject) in Core Types.
+
+### Registration
+
+#### `registerExternalClass(finalize: ?*const fn(*anyopaque) callconv(.c) void, foreach: ?*const fn(*anyopaque, b_obj_arg) callconv(.c) void) *ExternalClass`
+
+Register an external class with the Lean runtime.
+
+**Parameters:**
+- `finalize` - Called when object's refcount reaches 0. Must free native resources. Can be null if no cleanup needed (rare).
+- `foreach` - Called during GC marking. Must visit any Lean objects held by native data. Can be null if native data doesn't hold Lean objects (common case).
+
+**Returns:** Pointer to registered external class. Store and reuse for all objects of this type.
+
+**Thread Safety:** Registration is thread-safe, typically done at startup.
+
+**Performance:** Called once per class at startup. Zero overhead after registration.
+
+**Finalizer Signature Example:**
+```zig
+fn myFinalizer(data: *anyopaque) callconv(.c) void {
+    const my_data: *MyType = @ptrCast(@alignCast(data));
+    // Free native resources
+    my_data.resource.close();
+    // Dec_ref any Lean objects held
+    if (my_data.lean_value) |val| {
+        lean.lean_dec_ref(val);
+    }
+    // Free your structure
+    allocator.destroy(my_data);
+    // DON'T free Lean object header - runtime handles that!
+}
+```
+
+**Foreach Signature Example (optional):**
+```zig
+fn myForeach(data: *anyopaque, visitor: lean.b_obj_arg) callconv(.c) void {
+    const my_data: *MyType = @ptrCast(@alignCast(data));
+    // Tell GC about Lean objects you're holding
+    if (my_data.cached_result) |result| {
+        lean.lean_apply_1(visitor, result);
+    }
+}
+```
+
+### Allocation
+
+#### `allocExternal(class: *ExternalClass, data: *anyopaque) obj_res`
+
+Allocate an external object wrapping native data.
+
+**Preconditions:**
+- `class` must be a registered external class
+- `data` must be a valid pointer to your native structure
+- `data` must remain valid until finalizer is called
+
+**Parameters:**
+- `class` - External class descriptor (from `registerExternalClass`)
+- `data` - Pointer to your native data
+
+**Returns:** External object with refcount=1, or null on allocation failure. Return type is `obj_res` (which is `?*Object`), making this an optional pointer.
+
+**Memory Ownership:**
+- The returned object has refcount=1 (caller owns initial reference)
+- Native data lifetime is managed by your finalizer
+- Lean runtime manages the object header lifetime
+
+**Performance:** Inline function. Allocation cost: ~same as allocCtor.
+
+**Example:**
+```zig
+const handle = allocator.create(FileHandle) catch return null;
+handle.* = FileHandle{ .fd = file, .path = path };
+
+const ext = lean.allocExternal(file_class, handle) orelse {
+    allocator.destroy(handle);
+    return error.AllocationFailed;
+};
+defer lean.lean_dec_ref(ext);
+```
+
+### Data Access
+
+#### `getExternalData(o: b_obj_arg) *anyopaque`
+
+Get the native data pointer from an external object.
+
+**Preconditions:**
+- `o` must be a valid external object (check with `isExternal()`)
+- Undefined behavior if called on non-external object
+
+**Parameters:**
+- `o` - External object (borrowed reference)
+
+**Returns:** Pointer to native data (as passed to `allocExternal`).
+
+**Performance:** **2 CPU instructions**: 1 cast + 1 load
+
+**Example:**
+```zig
+const handle: *FileHandle = @ptrCast(@alignCast(
+    lean.getExternalData(file_obj)
+));
+_ = handle.fd.read(buffer);
+```
+
+#### `getExternalClass(o: b_obj_arg) *ExternalClass`
+
+Get the external class from an external object.
+
+**Preconditions:**
+- `o` must be a valid external object
+
+**Parameters:**
+- `o` - External object (borrowed reference)
+
+**Returns:** External class descriptor.
+
+**Performance:** **2 CPU instructions**: 1 cast + 1 load
+
+**Usage:** Rarely needed in user code.
+
+#### `setExternalData(o: obj_arg, data: *anyopaque) ?obj_res`
+
+Set new native data for an external object.
+
+**Note:** The old data is NOT freed by this function. Typically you'd free it in the class finalizer, or explicitly before calling this function.
+
+**Preconditions:**
+- `o` must be a valid external object
+
+**Parameters:**
+- `o` - External object (takes ownership)
+- `data` - New data pointer
+
+**Returns:** External object with updated data (transfers ownership).
+
+**Behavior:**
+- If exclusive (refcount=1), modifies in-place
+- If shared (refcount>1), allocates new object
+
+**Performance:** Inline function. Fast path if exclusive.
+
+**Example:**
+```zig
+// Typically you'd free old data first
+const old_data: *MyData = @ptrCast(@alignCast(lean.getExternalData(obj)));
+allocator.destroy(old_data);
+
+const new_data = allocator.create(MyData);
+const updated = lean.setExternalData(obj, new_data) orelse {
+    allocator.destroy(new_data);
+    return error.AllocationFailed;
+};
+```
+
+### Complete Example: File Handle
+
+```zig
+const FileHandle = struct {
+    fd: std.fs.File,
+    path: []const u8,
+};
+
+fn fileFinalize(data: *anyopaque) callconv(.c) void {
+    const handle: *FileHandle = @ptrCast(@alignCast(data));
+    handle.fd.close();
+    allocator.free(handle.path);
+    allocator.destroy(handle);
+}
+
+// Register once at startup
+const file_class = lean.registerExternalClass(fileFinalize, null);
+
+// Create external object
+export fn openFile(path_obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    const path_str = lean.stringCstr(path_obj);
+    const path_len = lean.stringSize(path_obj) - 1;
+    
+    const handle = allocator.create(FileHandle) catch {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    handle.fd = std.fs.cwd().openFile(path_str[0..path_len], .{}) catch {
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("file open failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    handle.path = allocator.dupe(u8, path_str[0..path_len]) catch {
+        handle.fd.close();
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("path copy failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    const ext = lean.allocExternal(file_class, handle) orelse {
+        handle.fd.close();
+        allocator.free(handle.path);
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("external object allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    return lean.ioResultMkOk(ext);
+}
+
+// Use in operations
+export fn readBytes(file_obj: lean.obj_arg, n_obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(file_obj);
+    defer lean.lean_dec_ref(n_obj);
+    
+    const handle: *FileHandle = @ptrCast(@alignCast(
+        lean.getExternalData(file_obj)
+    ));
+    
+    const n = lean.unboxUsize(n_obj);
+    const buffer = allocator.alloc(u8, n) catch {
+        const err = lean.lean_mk_string("buffer allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    defer allocator.free(buffer);
+    
+    const bytes_read = handle.fd.read(buffer) catch {
+        const err = lean.lean_mk_string("read failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    const result = lean.lean_mk_string_from_bytes(buffer.ptr, bytes_read);
+    return lean.ioResultMkOk(result);
+}
+```
 
 ---
 

@@ -640,6 +640,168 @@ def lazyCounterExample : IO Unit := do
   IO.println s!"Lazy result: {result}"
 ```
 
+### External Objects: Native Resource Management
+
+External objects wrap native resources (files, sockets, database connections) with automatic cleanup.
+
+```zig
+const std = @import("std");
+const lean = @import("lean");
+
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const allocator = gpa.allocator();
+
+// Native resource type
+const FileHandle = struct {
+    fd: std.fs.File,
+    path: []const u8,
+    bytes_read: usize,
+};
+
+// Finalizer: cleanup native resources
+fn fileFinalize(data: *anyopaque) callconv(.c) void {
+    const handle: *FileHandle = @ptrCast(@alignCast(data));
+    handle.fd.close();
+    allocator.free(handle.path);
+    allocator.destroy(handle);
+}
+
+// Register class once at startup
+var file_class: *lean.ExternalClass = undefined;
+
+export fn initFileClass() void {
+    file_class = lean.registerExternalClass(fileFinalize, null);
+}
+
+// Open file as external object
+export fn openFile(path_obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(path_obj);
+    
+    const path_str = lean.stringCstr(path_obj);
+    const path_len = lean.stringSize(path_obj) - 1;
+    
+    // Allocate native handle
+    const handle = allocator.create(FileHandle) catch {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    // Open file
+    handle.fd = std.fs.cwd().openFile(path_str[0..path_len], .{}) catch {
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("file open failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    // Copy path
+    handle.path = allocator.dupe(u8, path_str[0..path_len]) catch {
+        handle.fd.close();
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("path copy failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    handle.bytes_read = 0;
+    
+    // Wrap in external object
+    const ext = lean.allocExternal(file_class, handle) orelse {
+        handle.fd.close();
+        allocator.free(handle.path);
+        allocator.destroy(handle);
+        const err = lean.lean_mk_string("external allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    return lean.ioResultMkOk(ext);
+}
+
+// Read from file
+export fn readFile(file_obj: lean.obj_arg, n_obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(file_obj);
+    defer lean.lean_dec_ref(n_obj);
+    
+    // Extract native handle
+    const handle: *FileHandle = @ptrCast(@alignCast(
+        lean.getExternalData(file_obj)
+    ));
+    
+    const n = lean.unboxUsize(n_obj);
+    const buffer = allocator.alloc(u8, n) catch {
+        const err = lean.lean_mk_string("buffer alloc failed");
+        return lean.ioResultMkError(err);
+    };
+    defer allocator.free(buffer);
+    
+    const bytes_read = handle.fd.read(buffer) catch {
+        const err = lean.lean_mk_string("read failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    handle.bytes_read += bytes_read;
+    
+    const result = lean.lean_mk_string_from_bytes(buffer.ptr, bytes_read);
+    return lean.ioResultMkOk(result);
+}
+
+// Get stats
+export fn getFileStats(file_obj: lean.b_obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    
+    const handle: *FileHandle = @ptrCast(@alignCast(
+        lean.getExternalData(file_obj)
+    ));
+    
+    // Create struct with stats
+    const stats = lean.allocCtor(0, 0, @sizeOf(usize)) orelse {
+        const err = lean.lean_mk_string("allocation failed");
+        return lean.ioResultMkError(err);
+    };
+    
+    lean.ctorSetUsize(stats, 0, handle.bytes_read);
+    return lean.ioResultMkOk(stats);
+}
+```
+
+**Lean side:**
+```lean
+-- Initialize at startup
+@[extern "initFileClass"]
+opaque initFileClass : IO Unit
+
+-- File handle type (opaque to Lean)
+opaque FileHandle : Type
+
+@[extern "openFile"]
+opaque openFile (path : String) : IO FileHandle
+
+@[extern "readFile"]
+opaque readFile (file : FileHandle) (n : USize) : IO String
+
+@[extern "getFileStats"]
+opaque getFileStats (file : @& FileHandle) : IO USize
+
+def fileExample : IO Unit := do
+  initFileClass
+  
+  let file ← openFile "test.txt"
+  let content ← readFile file 1024
+  let stats ← getFileStats file
+  
+  IO.println s!"Read {stats} bytes"
+  IO.println s!"Content: {content}"
+  -- file automatically cleaned up when refcount reaches 0
+```
+
+**Key Benefits:**
+- Automatic resource cleanup via finalizer
+- Type-safe native data access
+- Zero-copy native → Lean integration
+- Proper error handling with IO results
+
+---
+
 ## Troubleshooting
 
 ### Bindings Don't Match Lean Version
