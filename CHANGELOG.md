@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-12-30
+
 ### Added
 - **External Objects Documentation & Examples** - Complete coverage for native resource management
   - Updated `doc/api.md`: Added External Objects section (#13) with complete API reference
@@ -25,8 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository moved to `unlifted` organization: https://github.com/unlifted/lean-zig
   - All documentation URLs updated to reflect new location
   - GitHub automatically redirects old URLs for seamless transition
-
-### Fixed
 
 ## [0.3.1] - 2025-12-29
 
@@ -145,7 +145,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build system integration via `build.zig`
 - MIT license
 
-[Unreleased]: https://github.com/unlifted/lean-zig/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/unlifted/lean-zig/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/unlifted/lean-zig/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/unlifted/lean-zig/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/unlifted/lean-zig/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/unlifted/lean-zig/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/unlifted/lean-zig/releases/tag/v0.1.0
