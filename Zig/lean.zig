@@ -120,6 +120,11 @@ pub const lean_inc_ref = memory_mod.lean_inc_ref;
 pub const lean_dec_ref = memory_mod.lean_dec_ref;
 pub const lean_alloc_object = memory_mod.lean_alloc_object;
 
+// Multi-threading support
+pub const lean_inc_ref_n = memory_mod.lean_inc_ref_n;
+pub const isMt = memory_mod.isMt;
+pub const markMt = memory_mod.markMt;
+
 pub const isScalar = memory_mod.isScalar;
 pub const objectTag = memory_mod.objectTag;
 pub const objectRc = memory_mod.objectRc;

@@ -3,6 +3,7 @@
 //! Provides reference counting, type checking, and memory queries.
 //! Most functions are inline for zero-cost abstractions.
 
+const std = @import("std");
 const types = @import("types.zig");
 const lean_raw = @import("lean_raw");
 
@@ -81,6 +82,85 @@ pub inline fn lean_dec_ref(o: obj_arg) void {
         lean_dec_ref_cold(o);
     }
     // If m_rc == 0, it's a persistent/immortal object, do nothing
+}
+
+// ============================================================================
+// Multi-Threading Support
+// ============================================================================
+
+/// Increment reference count by N (bulk operation).
+///
+/// Reimplemented from lean.h `static inline void lean_inc_ref_n(lean_object * o, size_t n)`.
+/// Uses atomic operations for multi-threaded objects.
+///
+/// ## Safety
+/// - NULL pointers are safely ignored
+/// - Tagged pointers (scalars) are safely ignored
+/// - Uses atomic operations for MT objects (refcount < 0)
+///
+/// ## Performance
+/// **2-4 CPU instructions** depending on ST/MT status:
+/// - ST objects: Simple addition
+/// - MT objects: Atomic subtraction (Lean's MT refcounts are negative)
+///
+/// ## Parameters
+/// - `o` - Object to increment (nullable)
+/// - `n` - Amount to increment refcount by
+pub inline fn lean_inc_ref_n(o: obj_arg, n: usize) void {
+    const obj = o orelse return;
+    
+    // Tagged pointers (scalars) don't have reference counts
+    if (isScalar(obj)) return;
+    
+    const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));
+    
+    // Check if single-threaded (ST) or multi-threaded (MT)
+    if (hdr.m_rc > 0) {
+        // ST path: simple addition
+        hdr.m_rc += @intCast(n);
+    } else if (hdr.m_rc != 0) {
+        // MT path: use atomic subtraction (MT refcounts are stored as negative)
+        // Note: Lean uses atomic_fetch_sub because MT refcounts are negated
+        const rc_ptr: *std.atomic.Value(i32) = @ptrCast(@alignCast(&hdr.m_rc));
+        _ = rc_ptr.fetchSub(@intCast(n), .monotonic);
+    }
+    // If m_rc == 0, it's a persistent object (no refcounting needed)
+}
+
+/// Check if object uses multi-threaded reference counting.
+///
+/// Multi-threaded (MT) objects use atomic operations for refcounting.
+/// Single-threaded (ST) objects use simple increment/decrement.
+///
+/// ## Returns
+/// `true` if object is MT (refcount < 0), `false` otherwise.
+///
+/// ## Notes
+/// - Scalars are never MT (they have no refcount)
+/// - MT objects have slightly higher overhead due to atomics
+pub inline fn isMt(o: b_obj_arg) bool {
+    const obj = o orelse return false;
+    if (isScalar(obj)) return false;
+    return objectRc(obj) < 0;
+}
+
+/// Mark object as multi-threaded.
+///
+/// Converts a single-threaded (ST) object to multi-threaded (MT) mode,
+/// enabling safe sharing across threads via atomic refcount operations.
+///
+/// ## Preconditions
+/// - Object must have exclusive access (refcount == 1)
+/// - Must be called BEFORE sharing object across threads
+///
+/// ## Parameters
+/// - `o` - Object to mark as MT (takes ownership, returns it)
+///
+/// ## Safety
+/// - Scalars are safely ignored
+/// - Already-MT objects are safely ignored
+pub inline fn markMt(o: obj_arg) void {
+    lean_raw.lean_mark_mt(o);
 }
 
 // ============================================================================
