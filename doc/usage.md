@@ -646,7 +646,7 @@ External objects wrap native resources (files, sockets, database connections) wi
 
 ```zig
 const std = @import("std");
-const lean = @import("lean");
+const lean = @import("lean-zig");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
