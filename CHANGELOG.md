@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **External Objects Documentation & Examples** - Complete coverage for native resource management
+  - Updated `doc/api.md`: Added External Objects section (#13) with complete API reference
+    - `ExternalClass` and `ExternalObject` core types documented
+    - All 5 API functions: `registerExternalClass`, `allocExternal`, `getExternalData`, `getExternalClass`, `setExternalData`
+    - Comprehensive file handle example (~250 lines) demonstrating proper cleanup patterns
+  - Updated `doc/usage.md`: Added External Objects usage section with FileHandle example
+    - Native resource management pattern with automatic cleanup via finalizers
+    - Complete code showing initializer, finalizer, and all file operations
+  - Created `examples/10-external-objects/`: Complete file I/O example application
+    - Demonstrates wrapping native file handles as Lean objects
+    - Shows automatic cleanup via finalizers when refcount reaches 0
+    - Includes comprehensive README (6KB) covering concepts, patterns, and best practices
 
 ### Changed
 - Repository moved to `unlifted` organization: https://github.com/unlifted/lean-zig
