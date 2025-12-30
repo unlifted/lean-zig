@@ -121,7 +121,7 @@ Add this package to your `lakefile.lean`:
 
 ```lean
 require «lean-zig» from git
-  "https://github.com/efvincent/lean-zig" @ "main"
+  "https://github.com/unlifted/lean-zig" @ "main"
 ```
 
 The bindings will be automatically generated when you build. See [Usage Guide](doc/usage.md) for detailed integration instructions.

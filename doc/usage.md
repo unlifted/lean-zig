@@ -8,7 +8,7 @@ Comprehensive guide for integrating `lean-zig` into your Lean 4 project.
 
 ```lean
 require «lean-zig» from git
-  "https://github.com/efvincent/lean-zig" @ "main"
+  "https://github.com/unlifted/lean-zig" @ "main"
 ```
 
 ### 2. Automatic Binding Generation
@@ -58,7 +58,7 @@ In your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .@"lean-zig" = .{
-        .url = "https://github.com/efvincent/lean-zig/archive/main.tar.gz",
+        .url = "https://github.com/unlifted/lean-zig/archive/main.tar.gz",
         // Add actual hash
     },
 },
@@ -235,7 +235,7 @@ Update your `lakefile.lean`:
 
 ```lean
 require «lean-zig» from git
-  "https://github.com/efvincent/lean-zig" @ "main"
+  "https://github.com/unlifted/lean-zig" @ "main"
 
 @[default_target]
 lean_lib «MyLib» where
