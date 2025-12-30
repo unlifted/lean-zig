@@ -243,9 +243,13 @@ test "MT status persists through inc operations" {
 
     // Decrement back (still MT since we used MT increment)
     lean.lean_dec_ref(obj);
-    
-    // Note: MT status may not persist after dec to refcount 1
-    // This is runtime-dependent behavior
+
+    // Note: when the refcount drops back to 1, some Lean runtime implementations
+    // may clear the MT flag as an optimization. Because this behavior is
+    // implementation- and version-dependent, we intentionally do not assert
+    // anything about the MT status at this point; the purpose of this test is
+    // only to verify that MT status is preserved across inc/dec while the
+    // object is shared (refcount > 1).
 }
 
 test "null pointers safe in MT operations" {
@@ -253,9 +257,10 @@ test "null pointers safe in MT operations" {
 
     // MT operations should handle null safely
     lean.lean_inc_ref_n(null_obj, 1);
-    
-    // markMt forwards to runtime which doesn't handle null, so skip it
-    // lean.markMt(null_obj);  // Not tested - lean_mark_mt doesn't handle null
+
+    // Note: markMt is NOT null-safe (forwards to lean_mark_mt which requires non-null)
+    // This is documented in the API and function docstring.
+    // Calling markMt(null) would cause a segfault, so we skip it in this test.
 
     const is_mt = lean.isMt(null_obj);
     try testing.expect(!is_mt);
@@ -274,7 +279,7 @@ test "bulk increment with n=1 equivalent to regular" {
 
 test "bulk increment for MT object" {
     const obj = lean.allocCtor(0, 0, 0) orelse return error.AllocationFailed;
-    
+
     lean.markMt(obj);
     try testing.expect(lean.isMt(obj));
 
@@ -289,4 +294,3 @@ test "bulk increment for MT object" {
     // Final cleanup
     lean.lean_dec_ref(obj);
 }
-

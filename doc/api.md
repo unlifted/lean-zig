@@ -224,6 +224,10 @@ spawn_thread_with_object(obj);
 ```
 
 **Important:** Failure to call `markMt` before sharing will cause data races and memory corruption!
+This critical safety requirement is also documented in the `markMt` docstring in
+[memory.zig](../Zig/memory.zig) (lines 147–164); both descriptions are kept in sync.
+
+**Note:** `markMt` does NOT handle null pointers safely. Passing null will cause a segfault.
 
 ---
 

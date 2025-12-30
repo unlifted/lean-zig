@@ -3,7 +3,7 @@
 //! Provides reference counting, type checking, and memory queries.
 //! Most functions are inline for zero-cost abstractions.
 
-const std = @import("std");
+const atomic = @import("std").atomic;
 const types = @import("types.zig");
 const lean_raw = @import("lean_raw");
 
@@ -108,12 +108,12 @@ pub inline fn lean_dec_ref(o: obj_arg) void {
 /// - `n` - Amount to increment refcount by
 pub inline fn lean_inc_ref_n(o: obj_arg, n: usize) void {
     const obj = o orelse return;
-    
+
     // Tagged pointers (scalars) don't have reference counts
     if (isScalar(obj)) return;
-    
+
     const hdr: *ObjectHeader = @ptrCast(@alignCast(obj));
-    
+
     // Check if single-threaded (ST) or multi-threaded (MT)
     if (hdr.m_rc > 0) {
         // ST path: simple addition
@@ -121,7 +121,7 @@ pub inline fn lean_inc_ref_n(o: obj_arg, n: usize) void {
     } else if (hdr.m_rc != 0) {
         // MT path: use atomic subtraction (MT refcounts are stored as negative)
         // Note: Lean uses atomic_fetch_sub because MT refcounts are negated
-        const rc_ptr: *std.atomic.Value(i32) = @ptrCast(@alignCast(&hdr.m_rc));
+        const rc_ptr: *atomic.Value(i32) = @ptrCast(@alignCast(&hdr.m_rc));
         _ = rc_ptr.fetchSub(@intCast(n), .monotonic);
     }
     // If m_rc == 0, it's a persistent object (no refcounting needed)
@@ -152,6 +152,7 @@ pub inline fn isMt(o: b_obj_arg) bool {
 /// ## Preconditions
 /// - Object must have exclusive access (refcount == 1)
 /// - Must be called BEFORE sharing object across threads
+/// - Object must be non-null (null pointers will cause segfault)
 ///
 /// ## Parameters
 /// - `o` - Object to mark as MT (takes ownership, returns it)
@@ -159,6 +160,8 @@ pub inline fn isMt(o: b_obj_arg) bool {
 /// ## Safety
 /// - Scalars are safely ignored
 /// - Already-MT objects are safely ignored
+/// - **CRITICAL**: Failure to call `markMt` before sharing objects across
+///   threads WILL cause data races and memory corruption!
 pub inline fn markMt(o: obj_arg) void {
     lean_raw.lean_mark_mt(o);
 }
