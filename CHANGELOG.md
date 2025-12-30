@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Multi-Threading Support** - Thread-safe reference counting for concurrent object sharing
+  - `lean_inc_ref_n(o, n)` - Bulk increment reference count with atomic operations for MT objects
+  - `isMt(o)` - Check if object uses multi-threaded reference counting (refcount < 0)
+  - `markMt(o)` - Convert single-threaded object to multi-threaded mode before sharing
+  - 11 comprehensive MT tests covering detection, conversion, bulk operations, and thread simulation
+  - Reimplemented from lean.h `static inline` functions with proper atomic operations
+  - Documentation in `doc/api.md` with examples and safety considerations
+  - Total test count: 128 tests (up from 117)
+
 ## [0.4.0] - 2025-12-30
 
 ### Added
