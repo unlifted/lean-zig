@@ -165,6 +165,8 @@ pub inline fn registerExternalClass(
 /// };
 /// defer lean.lean_dec_ref(ext);
 /// ```
+///
+/// Note: `obj_res` is defined as `?*Object`, so this function returns an optional pointer.
 pub inline fn allocExternal(class: *ExternalClass, data: *anyopaque) obj_res {
     // Allocate object header + class pointer + data pointer
     const obj_ptr = @as(?*ExternalObject, @ptrCast(@alignCast(
