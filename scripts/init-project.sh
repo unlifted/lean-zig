@@ -113,10 +113,12 @@ extern_lib libleanzig pkg := do
 lean_exe «PROJECT_NAME_PLACEHOLDER» where
   root := `Main
   supportInterpreter := true
+  extern_lib := #[`libleanzig]
 EOF
 
-# Replace placeholder with actual project name
-sed -i "s/PROJECT_NAME_PLACEHOLDER/$PROJECT_NAME/g" lakefile.lean
+# Replace placeholder with actual project name (portable across GNU/BSD sed)
+sed "s/PROJECT_NAME_PLACEHOLDER/$PROJECT_NAME/g" lakefile.lean > lakefile.lean.tmp
+mv lakefile.lean.tmp lakefile.lean
 
 echo "✓ Updated lakefile.lean with lean-zig dependency"
 
@@ -149,8 +151,10 @@ echo "✓ Downloaded lean-zig"
 # Copy and customize build.zig template
 cp .lake/packages/lean-zig/template/build.zig ./
 
-# Customize the template to point to our zig/ffi.zig
-sed -i 's|zig/CHANGE_ME\.zig|zig/ffi.zig|g' build.zig
+# Customize the template to point to our zig/ffi.zig (portable, no sed -i)
+tmp_build_zig="$(mktemp build.zig.XXXXXX)"
+sed 's|zig/CHANGE_ME\.zig|zig/ffi.zig|g' build.zig > "$tmp_build_zig"
+mv "$tmp_build_zig" build.zig
 
 echo "✓ Copied and customized build.zig"
 

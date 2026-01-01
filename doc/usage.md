@@ -107,8 +107,6 @@ extern_lib libleanzig pkg := do
 
 **What this does**: Tells Lake to invoke `zig build` and link the resulting static library.
 
-**What this does**: Tells Lake to invoke `zig build` and link the resulting static library.
-
 ### ☐ Step 6: Create Your Zig FFI Code
 
 Create your Zig source file (e.g., `zig/my_ffi.zig`):

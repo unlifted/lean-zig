@@ -176,9 +176,9 @@ lake build  # Downloads lean-zig and triggers build (may fail - that's OK!)
 cp .lake/packages/lean-zig/template/build.zig ./
 ```
 
-Edit `build.zig` **line 62** to point to your Zig source:
+Edit the `ZIG_FFI_SOURCE` constant at the top of `build.zig` to point to your Zig source:
 ```zig
-.root_source_file = b.path("zig/your_code.zig"),  // ← Change this
+const ZIG_FFI_SOURCE = "zig/your_code.zig"; // ← Change this
 ```
 
 **Multi-file projects**: Just point to your root file - Zig automatically compiles imported files.

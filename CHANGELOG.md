@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 - **Template build.zig enhancements**
-  - **ZIG_FFI_SOURCE variable**: Customization point moved to top of file (line 27) for easy access
+  - **ZIG_FFI_SOURCE variable**: Customization point moved to top of file for easy access
   - Prominent customization comments with visual separators
   - Clear "no changes needed below" guidance after customization section
   - Auto-detection and copying of compatibility stub

@@ -12,7 +12,8 @@ open System IO Lean
 /-- Get user input with a prompt -/
 def prompt (msg : String) : IO String := do
   IO.print s!"{msg}: "
-  (← IO.getStdin).getLine
+  let input ← (← IO.getStdin).getLine
+  pure input.trim
 
 /-- Check if a command exists in PATH -/
 def commandExists (cmd : String) : IO Bool := do

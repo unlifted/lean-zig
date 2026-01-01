@@ -30,3 +30,4 @@ extern_lib libleanzig pkg := do
 lean_exe «PROJECT_NAME» where
   root := `Main
   supportInterpreter := true
+  extern_lib := #[`libleanzig]
