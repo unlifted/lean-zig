@@ -3,7 +3,7 @@ open Lake DSL
 open System (FilePath)
 
 package «lean-zig» where
-  version := v!"0.4.0"
+  version := v!"0.7.0"
   description := "Zig bindings for the Lean 4 runtime (Hybrid JIT Strategy)"
   keywords := #["zig", "ffi", "low-level"]
 
@@ -38,6 +38,17 @@ script test do
   let child ← IO.Process.spawn {
     cmd := zigCmd
     args := args
+  }
+  let exitCode ← child.wait
+  if exitCode != 0 then
+    return 1
+  return 0
+
+script init (args) do
+  -- Initialize a new project with lean-zig support
+  let child ← IO.Process.spawn {
+    cmd := "lean"
+    args := #["--run", "scripts/InitProject.lean"] ++ args.toArray
   }
   let exitCode ← child.wait
   if exitCode != 0 then

@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-01-01
+
+### Added
+- **Developer Experience Improvements**
+  - Native Lean init script: scripts/InitProject.lean for project creation, callable via `lake script run init`
+  - Interactive prompts: Script prompts for project name and location if not provided on command line
+  - Template files: Project templates now stored as actual files in template/ directory (under source control)
+    - template/lakefile.lean.template - Lake configuration with lean-zig dependency
+    - template/Main.lean.template - Sample Lean code with FFI declaration
+    - template/ffi.zig.template - Sample Zig FFI implementation
+    - template/gitignore.template - Git ignore file for Lean/Zig projects
+  - Auto-copy stub file: template/build.zig now automatically copies copy_file_range_stub.o from lean-zig package to .zig-cache
+  - Better error messages: Helpful guidance when stub file not found, with exact commands to fix
+  - Setup checklist: Step-by-step checklist in doc/usage.md with checkbox format
+  - API Quick Reference: Common operations reference in README.md for quick lookup
+  - Project init script: scripts/init-project.sh (legacy bash version) for compatibility
+
+### Changed
+- **File Organization**
+  - Moved copy_file_range_stub.* from root to compat/ directory for cleaner structure
+  - Moved GLIBC_COMPAT.md to doc/glibc-compatibility.md matching documentation style
+  - Template customization: Changed placeholder from "your_code.zig" to "CHANGE_ME.zig" with prominent TODO
+  - Quick Start: Clarified that `lake build` (not `lake update`) downloads dependencies
+
+### Improved
+- **Template build.zig enhancements**
+  - **ZIG_FFI_SOURCE variable**: Customization point moved to top of file (line 27) for easy access
+  - Prominent customization comments with visual separators
+  - Clear "no changes needed below" guidance after customization section
+  - Auto-detection and copying of compatibility stub
+  - Better error handling with actionable messages
+- **Init script behavior**
+  - Default: Creates project as **sibling** directory (in `..`) instead of subdirectory
+  - Accepts optional path argument to override default location
+  - Interactive mode when run without arguments
+  - Validates project names (alphanumeric, hyphens, underscores only)
+- **Documentation updates**
+  - Updated all references from "line 62" to "ZIG_FFI_SOURCE variable"
+  - Enhanced scripts/README.md with comprehensive usage guide
+  - Documented init script modes (command-line vs interactive)
+
 ## [0.6.0] - 2026-01-01
 
 ### Added
@@ -186,7 +227,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build system integration via `build.zig`
 - MIT license
 
-[Unreleased]: https://github.com/unlifted/lean-zig/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/unlifted/lean-zig/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/unlifted/lean-zig/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/unlifted/lean-zig/compare/v0.4.0...v0.6.0
 [0.4.0]: https://github.com/unlifted/lean-zig/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/unlifted/lean-zig/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/unlifted/lean-zig/compare/v0.2.0...v0.3.0

@@ -6,14 +6,26 @@
 //   - Platforms: Linux, macOS, Windows
 //
 // VERSION-SPECIFIC NOTES:
-//   - Zig 0.15+: Requires glibc 2.27 target on Linux (line 30)
-//   - Windows: Uses direct .a linking (handled automatically line 86-92)
+//   - Zig 0.15+: Requires glibc 2.27 target on Linux (auto-configured)
+//   - Windows: Uses direct .a linking (handled automatically)
 //   - Lean 4.25+: Library names stable (libleanrt, libleanshared)
 //
-// To use:
-// 1. Copy this file to your project root: cp .lake/packages/lean-zig/template/build.zig ./
-// 2. Customize line 38 to point to your Zig source file
-// 3. Add extern_lib to your lakefile.lean (see doc/usage.md)
+// ════════════════════════════════════════════════════════════════════════════
+// ⚠️  CUSTOMIZE THIS: Set your Zig FFI source file path
+// ════════════════════════════════════════════════════════════════════════════
+// Replace "zig/CHANGE_ME.zig" with the path to YOUR Zig source file.
+// For multi-file projects, just point to the root file.
+//
+// Examples:
+//   - "zig/ffi.zig"              (single file)
+//   - "zig/main.zig"             (multi-file, imports helpers.zig, etc.)
+//   - "src/ffi/bindings.zig"     (custom structure)
+//
+const ZIG_FFI_SOURCE = "zig/CHANGE_ME.zig"; // ← TODO: CHANGE THIS!
+//
+// ════════════════════════════════════════════════════════════════════════════
+// The rest of this file should not need changes for basic usage.
+// ════════════════════════════════════════════════════════════════════════════
 
 const std = @import("std");
 
@@ -39,19 +51,9 @@ pub fn build(b: *std.Build) void {
     const lean_sysroot = getLeanSysroot(b);
     const lean_include = b.pathJoin(&[_][]const u8{ lean_sysroot, "include" });
 
-    // ═══════════════════════════════════════════════════════════════
-    // CUSTOMIZE THIS: Point to your Zig FFI root source file
-    // ═══════════════════════════════════════════════════════════════
-    // This should be the file that exports your FFI functions with `export fn`.
-    // If you have multiple Zig files, just point to the root file here -
-    // Zig's build system automatically compiles any files you @import.
-    //
-    // Examples:
-    //   Single file:     "zig/ffi.zig"
-    //   Multi-file:      "zig/main.zig" (which does @import("helpers.zig"), etc.)
-    //   Complex project: "src/ffi/bindings.zig"
+    // Create FFI module using the path specified above
     const ffi_module = b.createModule(.{
-        .root_source_file = b.path("zig/your_code.zig"), // ← CHANGE THIS LINE
+        .root_source_file = b.path(ZIG_FFI_SOURCE),
         .target = target_resolved,
         .optimize = optimize,
         .link_libc = true,
@@ -91,11 +93,39 @@ pub fn build(b: *std.Build) void {
     // Link against Lean runtime (version-aware)
     linkLeanRuntime(lib, b, lean_sysroot, target_resolved);
 
-    // Add copy_file_range stub for glibc 2.27 compatibility (Zig 0.15+)
-    // This stub provides a fallback implementation that signals ENOSYS
-    lib.addObjectFile(b.path("copy_file_range_stub.o"));
+    // Add copy_file_range stub for glibc 2.27 compatibility (Zig 0.15+ on Linux)
+    // Auto-copies stub from lean-zig package if not present in project
+    addGlibcCompatStub(lib, b);
 
     b.installArtifact(lib);
+}
+
+// Auto-copy and link glibc compatibility stub
+fn addGlibcCompatStub(lib: *std.Build.Step.Compile, b: *std.Build) void {
+    const stub_src_path = ".lake/packages/lean-zig/compat/copy_file_range_stub.o";
+    const stub_dest_path = ".zig-cache/copy_file_range_stub.o";
+
+    // Try to copy stub from package to cache
+    std.fs.cwd().makePath(".zig-cache") catch {};
+
+    if (std.fs.cwd().copyFile(stub_src_path, std.fs.cwd(), stub_dest_path, .{})) {
+        // Successfully copied, link it
+        lib.addObjectFile(b.path(stub_dest_path));
+    } else |err| {
+        // Failed to copy - provide helpful error message
+        std.debug.print("\n" ++ "=" ** 70 ++ "\n", .{});
+        std.debug.print("ERROR: Could not find glibc compatibility stub file\n", .{});
+        std.debug.print("=" ** 70 ++ "\n\n", .{});
+        std.debug.print("Expected: {s}\n", .{stub_src_path});
+        std.debug.print("Error: {}\n\n", .{err});
+        std.debug.print("This file is required for Zig 0.15+ on Linux.\n\n", .{});
+        std.debug.print("Solutions:\n", .{});
+        std.debug.print("  1. Ensure lean-zig dependency is downloaded: lake build\n", .{});
+        std.debug.print("  2. Check that .lake/packages/lean-zig/ exists\n", .{});
+        std.debug.print("  3. See doc/glibc-compatibility.md for details\n\n", .{});
+        std.debug.print("=" ** 70 ++ "\n", .{});
+        std.process.exit(1);
+    }
 }
 
 // Helper function to link Lean runtime libraries (platform-aware)

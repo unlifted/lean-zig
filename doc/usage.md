@@ -4,13 +4,39 @@ Comprehensive guide for integrating `lean-zig` into your Lean 4 project.
 
 ## Quick Start
 
+**Two ways to get started:**
+
+### Option 1: Automated Setup (Recommended for New Projects)
+
+Use the initialization script for instant setup:
+
+```bash
+git clone https://github.com/unlifted/lean-zig
+cd lean-zig
+./scripts/init-project.sh my-zig-project
+cd my-zig-project
+lake build && lake exe my-zig-project
+```
+
+This creates a working project with everything configured. See [scripts/README.md](../scripts/README.md) for details.
+
+### Option 2: Manual Setup (For Existing Projects)
+
+Follow the setup checklist below to add lean-zig to an existing Lean project.
+
+---
+
+## Setup Checklist
+
 **Important**: Using lean-zig requires **two setup steps** beyond adding a dependency:
 1. Copy and customize a `build.zig` template
 2. Add an `extern_lib` target to your lakefile
 
 The library then automatically generates bindings matching your Lean installation.
 
-### 1. Add Dependency
+Follow these steps in order for a smooth setup:
+
+### ☐ Step 1: Add Dependency
 
 Add to your `lakefile.lean`:
 
@@ -19,29 +45,46 @@ require «lean-zig» from git
   "https://github.com/unlifted/lean-zig" @ "main"
 ```
 
-### 2. Copy and Customize Build Template
+### ☐ Step 2: Download Dependency
 
-Download the dependency and copy the template:
+Run `lake build` to download lean-zig:
 
 ```bash
-lake update
+lake build  # May fail with "zig: command not found" - that's expected!
+```
+
+**Why this step?** `lake build` (not `lake update`) downloads Lake dependencies and makes the lean-zig package available in `.lake/packages/`.
+
+### ☐ Step 3: Copy Build Template
+
+Copy the build template to your project root:
+
+```bash
 cp .lake/packages/lean-zig/template/build.zig ./
 ```
 
-Open `build.zig` and edit **line 47** to point to your Zig source file:
+**What this does**: Provides the Zig build configuration that handles binding generation, linking, and platform detection.
+
+### ☐ Step 4: Customize Build Template
+
+Open `build.zig` and find the `ZIG_FFI_SOURCE` constant at the top:
 
 ```zig
-const ffi_module = b.createModule(.{
-    .root_source_file = b.path("zig/your_code.zig"), // ← Change this
-    .target = target_resolved,
-    .optimize = optimize,
-    .link_libc = true,
-});
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔧 CUSTOMIZATION POINT - Change this to point to your Zig FFI code:
+// ═══════════════════════════════════════════════════════════════════════════
+const ZIG_FFI_SOURCE = "zig/CHANGE_ME.zig"; // ← TODO: Update this path!
 ```
 
-For multi-file projects, just point to the root file - Zig automatically compiles imported files.
+Replace the path with YOUR Zig source file location:
 
-### 3. Add extern_lib to Your Lakefile
+```zig
+const ZIG_FFI_SOURCE = "zig/my_ffi.zig"; // ← Your file here
+```
+
+**Multi-file projects?** Just point to your root file - Zig automatically compiles any files you `@import`.
+
+### ☐ Step 5: Add extern_lib to Lakefile
 
 Add this to your `lakefile.lean`:
 
@@ -62,7 +105,11 @@ extern_lib libleanzig pkg := do
   return Job.pure oFile
 ```
 
-### 4. Write Your Zig FFI Code
+**What this does**: Tells Lake to invoke `zig build` and link the resulting static library.
+
+**What this does**: Tells Lake to invoke `zig build` and link the resulting static library.
+
+### ☐ Step 6: Create Your Zig FFI Code
 
 Create your Zig source file (e.g., `zig/my_ffi.zig`):
 
@@ -77,6 +124,58 @@ export fn my_function(obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
     return lean.ioResultMkOk(result);
 }
 ```
+
+**Key points:**
+- Import lean-zig with `const lean = @import("lean");`
+- Export functions with `export fn function_name(...)`
+- Use `defer` for automatic cleanup of owned objects
+- Return IO results with `ioResultMkOk` or `ioResultMkError`
+
+### ☐ Step 7: Declare FFI Function in Lean
+
+In your Lean code (e.g., `Main.lean`):
+
+```lean
+@[extern "my_function"]
+opaque myFunction (value : Nat) : IO Nat
+
+def main : IO Unit := do
+  let result ← myFunction 42
+  IO.println s!"Result: {result}"
+```
+
+**What this does**: The `@[extern "my_function"]` attribute links the Lean declaration to your Zig function.
+
+### ☐ Step 8: Build
+
+Run `lake build`:
+
+```bash
+lake build
+```
+
+**What happens:**
+1. Lake invokes `zig build` via the `extern_lib` target
+2. Zig generates bindings from your Lean installation's `lean.h`
+3. Zig compiles your FFI code and links against Lean runtime
+4. Lake compiles your Lean code and links the Zig static library
+5. Final executable is produced in `.lake/build/bin/`
+
+### ☐ Step 9: Run
+
+```bash
+lake exe your-project-name
+```
+
+**Troubleshooting:** See [Common Issues](#troubleshooting) below if you encounter errors.
+
+---
+
+## Detailed Setup Instructions
+
+For more control and understanding, here's the detailed breakdown:
+
+### 1. Add Dependency
 
 ### 5. Build and Run
 
@@ -109,21 +208,18 @@ cp .lake/packages/lean-zig/template/build.zig ./
 
 #### 2. Customize the Template
 
-Open `build.zig` and customize line 26 to point to your Zig source:
+Open `build.zig` and update the `ZIG_FFI_SOURCE` constant at the top:
 
 ```zig
-// CUSTOMIZE THIS: Point to your FFI source file
-const lib = b.addStaticLibrary(.{
-    .name = "leanzig",
-    .root_source_file = .{ .path = "zig/my_ffi.zig" },  // ← Change this
-    .target = target,
-    .optimize = optimize,
-});
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔧 CUSTOMIZATION POINT - Change this to point to your Zig FFI code:
+// ═══════════════════════════════════════════════════════════════════════════
+const ZIG_FFI_SOURCE = "zig/my_ffi.zig"; // ← Change this path
 ```
 
 **Key customization points:**
-- **Line 26**: Set `.root_source_file` to your main Zig file (e.g., `"zig/ffi.zig"`)
-- **Line 24**: Optionally change library name from `"leanzig"` to match your project
+- **ZIG_FFI_SOURCE** (top of file): Set to your main Zig file (e.g., `"zig/ffi.zig"`)
+- **lib.name** (optional): Change library name from `"leanzig"` to match your project
 
 The template automatically:
 - Detects your Lean installation (`lean --print-prefix`)

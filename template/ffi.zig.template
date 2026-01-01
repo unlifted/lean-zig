@@ -1,0 +1,32 @@
+const lean = @import("lean");
+
+/// Sample FFI function that returns a greeting
+export fn zig_greet(name: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(name);
+    
+    // Get the name string from Lean
+    const name_cstr = lean.stringCstr(name);
+    const name_len = lean.stringSize(name) - 1; // Exclude null terminator
+    
+    // Create greeting
+    const greeting_prefix = "Hello from Zig, ";
+    const greeting_suffix = "!";
+    
+    // Allocate buffer for full greeting
+    const total_len = greeting_prefix.len + name_len + greeting_suffix.len;
+    var buffer: [256]u8 = undefined;
+    
+    if (total_len >= buffer.len) {
+        const err = lean.lean_mk_string_from_bytes("name too long", 13);
+        return lean.ioResultMkError(err);
+    }
+    
+    // Build greeting
+    @memcpy(buffer[0..greeting_prefix.len], greeting_prefix);
+    @memcpy(buffer[greeting_prefix.len..][0..name_len], name_cstr[0..name_len]);
+    @memcpy(buffer[greeting_prefix.len + name_len..][0..greeting_suffix.len], greeting_suffix);
+    
+    const result = lean.lean_mk_string_from_bytes(&buffer, total_len);
+    return lean.ioResultMkOk(result);
+}

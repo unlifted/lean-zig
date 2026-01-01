@@ -1,0 +1,19 @@
+# Lean
+.lake/
+build/
+lake-packages/
+
+# Zig
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Editor
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

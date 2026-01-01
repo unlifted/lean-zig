@@ -1,0 +1,7 @@
+-- FFI function declaration
+@[extern "zig_greet"]
+opaque zigGreet (name : String) : IO String
+
+def main : IO Unit := do
+  let greeting ← zigGreet "World"
+  IO.println greeting

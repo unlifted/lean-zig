@@ -129,6 +129,30 @@ The library then handles everything else automatically (binding generation, link
 
 ## Quick Start
 
+### Option 1: Automated Setup (Recommended)
+
+Use the initialization script to create a new project with everything configured:
+
+```bash
+# Clone lean-zig repository
+git clone https://github.com/unlifted/lean-zig
+cd lean-zig
+
+# Run the init script
+./scripts/init-project.sh my-zig-project
+
+# Build and run
+cd my-zig-project
+lake build
+lake exe my-zig-project
+```
+
+This creates a working "Hello from Zig" example with all configuration done automatically.
+
+### Option 2: Manual Setup
+
+For adding lean-zig to an existing project:
+
 ### 1. Add Dependency
 
 Add to your `lakefile.lean`:
@@ -140,14 +164,19 @@ require «lean-zig» from git
 
 ### 2. Copy and Customize Build Template
 
-Download the dependency and copy the template:
+**First, trigger dependency download** by running:
 
 ```bash
-lake update  # Download lean-zig dependency
+lake build  # Downloads lean-zig and triggers build (may fail - that's OK!)
+```
+
+**Then copy and customize the template:**
+
+```bash
 cp .lake/packages/lean-zig/template/build.zig ./
 ```
 
-Edit `build.zig` **line 47** to point to your Zig source:
+Edit `build.zig` **line 62** to point to your Zig source:
 ```zig
 .root_source_file = b.path("zig/your_code.zig"),  // ← Change this
 ```
@@ -199,6 +228,74 @@ The bindings will be automatically generated from your Lean installation.
 - No changes needed when upgrading within tested versions
 
 See [Usage Guide](doc/usage.md) for complete setup instructions and [Version Compatibility Guide](doc/version-compatibility.md) for upgrade procedures.
+
+## API Quick Reference
+
+### Common Operations
+
+```zig
+const lean = @import("lean");
+
+// ━━━ Strings ━━━
+// Create string from bytes
+const str = lean.lean_mk_string_from_bytes("Hello", 5);
+// From C string
+const str2 = lean.lean_mk_string("World");
+// Get C string pointer
+const cstr = lean.stringCstr(str);
+// Get length (bytes)
+const len = lean.stringSize(str);
+
+// ━━━ IO Results ━━━
+// Success
+return lean.ioResultMkOk(value);
+// Error
+const err = lean.lean_mk_string("error message");
+return lean.ioResultMkError(err);
+
+// ━━━ Boxing/Unboxing ━━━
+// Box scalar
+const boxed = lean.boxUsize(42);
+// Unbox scalar (check isScalar first!)
+if (lean.isScalar(obj)) {
+    const n = lean.unboxUsize(obj);
+}
+// Box float
+const f = lean.boxFloat(3.14);
+
+// ━━━ Arrays ━━━
+// Allocate array
+const arr = lean.allocArray(10) orelse return error;
+// Get/set elements
+const elem = lean.arrayGet(arr, i);
+lean.arraySet(arr, i, value);
+// Fast unchecked access
+const elem2 = lean.arrayUget(arr, i);
+
+// ━━━ Constructors ━━━
+// Allocate (tag, num_objects, scalar_bytes)
+const ctor = lean.allocCtor(0, 2, 8) orelse return error;
+// Set object field
+lean.ctorSet(ctor, 0, obj);
+// Set scalar field (at byte offset)
+lean.ctorSetUint32(ctor, 0, 42);
+
+// ━━━ Reference Counting ━━━
+// Increment (when storing additional reference)
+lean.lean_inc_ref(obj);
+// Decrement (when done with reference)
+lean.lean_dec_ref(obj);
+// Use defer for cleanup
+defer lean.lean_dec_ref(obj);
+
+// ━━━ Type Checks ━━━
+if (lean.isScalar(obj)) { }       // Tagged pointer?
+if (lean.isExclusive(obj)) { }    // Can mutate in-place?
+if (lean.isString(obj)) { }       // String type?
+if (lean.isArray(obj)) { }        // Array type?
+```
+
+See [API Reference](doc/api.md) for complete documentation.
 
 ## Building
 
