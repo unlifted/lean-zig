@@ -10,6 +10,8 @@ A comprehensive library providing complete Zig bindings for the Lean 4 runtime, 
 
 **🚀 Multi-Version & Multi-Platform Support**: One library version supports multiple Lean versions (4.25.0-4.26.0), multiple Zig versions (0.14.0-0.15.2), and all major platforms (Linux, macOS, Windows) - tested with 12 combinations in CI. No need for separate releases per version or platform!
 
+**⚙️ Setup**: More than just a dependency - requires copying and customizing a `build.zig` template (one-time setup, ~2 minutes). See [Quick Start](#getting-started) below.
+
 ## Supported Platforms
 
 ✅ **Linux** (Ubuntu, tested on ubuntu-latest)  
@@ -49,7 +51,7 @@ Pre-release versions (Lean nightly, Zig master) are **not supported** in the mai
 - **MINOR** (0.x.0): New features, backward-compatible
 - **PATCH** (0.x.y): Bug fixes only
 
-**Note**: Lean does not guarantee C ABI stability between minor versions. We pin tested versions in CI and document when updates require changes.
+**Note**: Lean does not guarantee C ABI stability between minor versions. We pin tested versions in CI and document when updates require changes. See [Version Compatibility Guide](doc/version-compatibility.md) for detailed information on handling version upgrades.
 
 ### Road to 1.0
 
@@ -63,6 +65,7 @@ This library will remain in **0.x.x** (pre-1.0) until **Zig itself reaches 1.0**
 - **Cross-Platform**: Works on Linux, macOS (Intel & Apple Silicon), and Windows - all tested in CI
 - **Hybrid JIT Strategy**: Auto-generates bindings from your Lean installation at build time - zero maintenance when Lean updates
 - **Version Sync**: Bindings always match your installed Lean version
+- **Template-Based Setup**: Copy and customize one `build.zig` file - template handles platform/version detection automatically
 - **Pure Zig**: No C shim required - performance-critical functions manually inlined in native Zig
 - **Full API Coverage**: Complete access to Lean runtime via auto-generated bindings
 - **Type Safety**: Strong typing with null checks and typed pointers (`obj_arg`, `b_obj_arg`, `obj_res`)
@@ -115,16 +118,87 @@ Functions are inlined strategically based on profiling data and runtime impact.
 - Unchecked array accessors for performance-critical code
 - Multi-threaded reference counting properly handled via atomics
 
+## Getting Started
+
+**⚠️ Important**: Using lean-zig is **more than just adding a dependency**. You need to:
+1. ✅ Add the dependency to your lakefile
+2. ✅ Copy and customize a `build.zig` template 
+3. ✅ Add an `extern_lib` target to your lakefile
+
+The library then handles everything else automatically (binding generation, linking, platform detection).
+
 ## Quick Start
 
-Add this package to your `lakefile.lean`:
+### 1. Add Dependency
+
+Add to your `lakefile.lean`:
 
 ```lean
 require «lean-zig» from git
   "https://github.com/unlifted/lean-zig" @ "main"
 ```
 
-The bindings will be automatically generated when you build. See [Usage Guide](doc/usage.md) for detailed integration instructions.
+### 2. Copy and Customize Build Template
+
+Download the dependency and copy the template:
+
+```bash
+lake update  # Download lean-zig dependency
+cp .lake/packages/lean-zig/template/build.zig ./
+```
+
+Edit `build.zig` **line 47** to point to your Zig source:
+```zig
+.root_source_file = b.path("zig/your_code.zig"),  // ← Change this
+```
+
+**Multi-file projects**: Just point to your root file - Zig automatically compiles imported files.
+
+### 3. Add extern_lib to Your Lakefile
+
+```lean
+extern_lib libleanzig pkg := do
+  let name := nameToStaticLib "leanzig"
+  let oFile := pkg.buildDir / name
+  
+  proc {
+    cmd := "zig"
+    args := #["build"]
+    cwd := pkg.dir
+  }
+  
+  let srcFile := pkg.dir / "zig-out" / "lib" / name
+  IO.FS.writeBinFile oFile (← IO.FS.readBinFile srcFile)
+  
+  return Job.pure oFile
+```
+
+### 4. Write Your Zig FFI Code
+
+```zig
+const lean = @import("lean");
+
+export fn my_function(world: lean.obj_arg) lean.obj_res {
+    const value = lean.boxUsize(42);
+    return lean.ioResultMkOk(value);
+}
+```
+
+### 5. Build
+
+```bash
+lake build
+```
+
+The bindings will be automatically generated from your Lean installation.
+
+**Version Compatibility**: The template automatically adapts to your environment:
+- Detects Lean/Zig versions at build time
+- Handles glibc 2.27 requirement for Zig 0.15+ on Linux
+- Platform-specific linking for Windows/macOS/Linux
+- No changes needed when upgrading within tested versions
+
+See [Usage Guide](doc/usage.md) for complete setup instructions and [Version Compatibility Guide](doc/version-compatibility.md) for upgrade procedures.
 
 ## Building
 

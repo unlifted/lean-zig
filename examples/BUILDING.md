@@ -1,53 +1,121 @@
 # Building Examples
 
-## Important Note
+The examples in this directory demonstrate lean-zig FFI patterns and are **buildable standalone projects**.
 
-The examples in this directory are **educational templates** demonstrating lean-zig FFI patterns. They show the structure and concepts needed to build Lean+Zig applications.
+## Prerequisites
 
-## Why Examples Don't Build Standalone
+1. Lean 4.26.0 installed (via elan)
+2. Zig 0.14.0+ installed  
+3. The lean-zig library built in the parent directory
 
-Each example's Zig code (`zig/*.zig`) would need to:
-1. Import the lean-zig bindings
-2. Be compiled into a shared library
-3. Be linked against the Lean runtime
-4. Be loaded by the Lean program
+## Building an Example
 
-This requires a complete build setup (build.zig, proper linking, etc.) which would obscure the educational content.
+Each example can be built independently:
 
-## How to Use These Examples
+```bash
+cd examples/01-hello-ffi
+lake build
+lake exe hello-ffi
+```
 
-### As Learning Material
-Read through each example in order to understand concepts:
-1. Read the README.md for concepts
-2. Study Main.lean to see Lean FFI declarations
-3. Examine zig/*.zig to see Zig implementations
-4. Note the patterns (boxing, memory management, error handling)
+The Lake configuration automatically:
+1. Pulls lean-zig as a dependency from the parent directory
+2. Builds the Zig FFI code into a library
+3. Links everything together
 
-### As Templates for Your Project
-To create a working Lean+Zig project:
+## How It Works
 
-1. **Start with lean-zig's test suite** - All concepts are validated there:
-   ```bash
-   cd /path/to/lean-zig
-   zig build test  # Runs all 117 tests
-   ```
+Each example's `lakefile.lean` has three key parts:
 
-2. **Copy an example as a template**:
-   ```bash
-   cp -r examples/01-hello-ffi my-project
-   cd my-project
-   ```
+1. **Dependency on lean-zig**:
+```lean
+require «lean-zig» from ".." / ".."
+```
 
-3. **Set up proper build system** - See [usage documentation](../doc/usage.md) for details
+2. **Lean executable definition**:
+```lean
+@[default_target]
+lean_exe «example-name» where
+  root := `Main
+```
 
-4. **Reference the working patterns**:
-   - Boxing: See `Zig/tests/boxing_test.zig`
-   - Constructors: See `Zig/tests/constructor_test.zig`  
-   - Arrays: See `Zig/tests/array_test.zig`
-   - Strings: See `Zig/tests/string_test.zig`
-   - etc.
+3. **Zig library build** (handled by Lake's external library system):
+```lean
+extern_lib libleanzig where
+  name := "leanzig"
+  srcDir := "zig"
+  moreLinkArgs := #["-lleanrt", "-lleanshared"]
+```
 
-## Validated Concepts
+## Build All Examples
+
+From the repository root:
+
+```bash
+./validate-examples.sh
+```
+
+This script:
+- Builds the lean-zig library
+- Builds each example
+- Runs all tests
+
+## Troubleshooting
+
+### "lean-zig not found"
+Build the parent library first:
+```bash
+cd ../..
+lake build
+```
+
+### "Zig compilation failed"
+Ensure Zig 0.14.0+ is installed:
+```bash
+zig version
+```
+
+### "leanrt not found"
+Ensure Lean is in your PATH:
+```bash
+lean --version
+elan show
+```
+
+## Example Structure
+
+Each example contains:
+- `Main.lean` - Lean code with FFI declarations
+- `zig/*.zig` - Zig implementation importing `@import("lean-zig")`
+- `lakefile.lean` - Build configuration
+- `README.md` - Explanation of concepts demonstrated
+
+## Using Examples as Templates
+
+To create your own project:
+
+1. Copy an example:
+```bash
+cp -r examples/01-hello-ffi my-project
+cd my-project
+```
+
+2. Update `lakefile.lean`:
+```lean
+package «my-project» where
+  version := v!"0.1.0"
+
+require «lean-zig» from git
+  "https://github.com/unlifted/lean-zig" @ "main"
+```
+
+3. Implement your FFI functions in `zig/` and declare them in Lean.
+
+4. Build and run:
+```bash
+lake build
+lake exe my-project
+```
 
 All concepts in these examples are **tested and validated** in lean-zig's test suite:
 

@@ -5,7 +5,6 @@
 //!
 //! All boxing/unboxing functions are inline for zero-cost abstractions.
 
-const std = @import("std");
 const types = @import("types.zig");
 const lean_raw = @import("lean_raw");
 const constructors = @import("constructors.zig");

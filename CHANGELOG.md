@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-01
+
+### Added
+- **Standalone Examples** - All 11 examples now build independently with their own build.zig and lakefile
+  - Example 11: Multi-file Zig projects demonstrating modular FFI code organization
+  - Template system: Single build.zig template with runtime Lean version detection
+  - CI validation: validate-examples.sh script ensuring all examples build successfully
+  - Version compatibility guide: doc/version-compatibility.md for Lean/Zig version matrix
+  - Documentation: Complete usage examples in doc/usage.md with build instructions
+
+### Changed
+- **Lake 5.0 Migration** - Updated all examples to use `extern_lib name pkg := do` syntax (breaking change from Lake 4.x `where` syntax)
+- **Build System Simplification** - Examples now use 13-line minimal lakefiles that call `zig build`
+- **Cross-Platform Improvements** - Build.zig files use conditional glibc override for better portability
+- **Code Organization** - Removed unused std imports from boxing.zig and constructors.zig
+
+### Fixed
+- **glibc 2.27 Compatibility** - Added copy_file_range stub to resolve Zig 0.15+ linking issues
+  - Zig 0.15+ generates copy_file_range symbols requiring glibc 2.38
+  - Lean runtime bundles glibc 2.27, causing undefined symbol errors
+  - Stub implementation provides ENOSYS fallback for unreachable code paths
+  - Documentation in GLIBC_COMPAT.md explaining the workaround
+- **Example Code Bugs** - Fixed type mismatches and ToString derivation issues in examples 07, 08, 11
+- **CI Badge** - Fixed GitHub Actions workflow badge URL in README
+
+### Removed
+- Obsolete compatibility shims: copy_file_range.c, libcopy_file_range.so, lean_header.h
+- Removed in favor of proper glibc target override and direct lean.h usage
+
 ## [0.5.0] - 2025-12-30
 
 ### Added

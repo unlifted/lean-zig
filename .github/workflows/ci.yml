@@ -95,3 +95,17 @@ jobs:
           $leanPath = (lean --print-prefix)
           $env:PATH = "$leanPath\bin;$env:PATH"
           lake script run test
+
+      - name: Validate Examples (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          source $HOME/.elan/env
+          ./validate-examples.sh
+
+      - name: Validate Examples (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $leanPath = (lean --print-prefix)
+          $env:PATH = "$leanPath\bin;$env:PATH"
+          bash validate-examples.sh

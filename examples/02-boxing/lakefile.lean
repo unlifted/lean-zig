@@ -10,7 +10,19 @@ require «lean-zig» from ".." / ".."
 lean_exe «boxing-demo» where
   root := `Main
 
-extern_lib libleanzig where
-  name := "leanzig"
-  srcDir := "zig"
-  moreLinkArgs := #["-lleanrt", "-lleanshared"]
+extern_lib libleanzig pkg := do
+  let name := nameToStaticLib "leanzig"
+  let oFile := pkg.buildDir / name
+
+  -- Build with Zig
+  proc {
+    cmd := "zig"
+    args := #["build"]
+    cwd := pkg.dir
+  }
+
+  -- Copy built library to Lake's expected location
+  let srcFile := pkg.dir / "zig-out" / "lib" / name
+  IO.FS.writeBinFile oFile (← IO.FS.readBinFile srcFile)
+
+  return Job.pure oFile

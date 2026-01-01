@@ -5,7 +5,6 @@
 //!
 //! All field access functions are inline for zero-cost abstractions.
 
-const std = @import("std");
 const types = @import("types.zig");
 const memory = @import("memory.zig");
 const lean_raw = @import("lean_raw");

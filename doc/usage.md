@@ -4,77 +4,348 @@ Comprehensive guide for integrating `lean-zig` into your Lean 4 project.
 
 ## Quick Start
 
+**Important**: Using lean-zig requires **two setup steps** beyond adding a dependency:
+1. Copy and customize a `build.zig` template
+2. Add an `extern_lib` target to your lakefile
+
+The library then automatically generates bindings matching your Lean installation.
+
 ### 1. Add Dependency
+
+Add to your `lakefile.lean`:
 
 ```lean
 require «lean-zig» from git
   "https://github.com/unlifted/lean-zig" @ "main"
 ```
 
-### 2. Automatic Binding Generation
+### 2. Copy and Customize Build Template
 
-The library uses `build.zig` which automatically:
-- Detects your Lean installation via `lean --print-prefix`
-- Generates FFI bindings from `lean.h` using `translateC`
-- Links against Lean runtime
+Download the dependency and copy the template:
 
-**No manual configuration needed.** Bindings always match your installed Lean version.
+```bash
+lake update
+cp .lake/packages/lean-zig/template/build.zig ./
+```
 
-### 3. Use in Your Zig Code
+Open `build.zig` and edit **line 47** to point to your Zig source file:
+
+```zig
+const ffi_module = b.createModule(.{
+    .root_source_file = b.path("zig/your_code.zig"), // ← Change this
+    .target = target_resolved,
+    .optimize = optimize,
+    .link_libc = true,
+});
+```
+
+For multi-file projects, just point to the root file - Zig automatically compiles imported files.
+
+### 3. Add extern_lib to Your Lakefile
+
+Add this to your `lakefile.lean`:
+
+```lean
+extern_lib libleanzig pkg := do
+  let name := nameToStaticLib "leanzig"
+  let oFile := pkg.buildDir / name
+  
+  proc {
+    cmd := "zig"
+    args := #["build"]
+    cwd := pkg.dir
+  }
+  
+  let srcFile := pkg.dir / "zig-out" / "lib" / name
+  IO.FS.writeBinFile oFile (← IO.FS.readBinFile srcFile)
+  
+  return Job.pure oFile
+```
+
+### 4. Write Your Zig FFI Code
+
+Create your Zig source file (e.g., `zig/my_ffi.zig`):
 
 ```zig
 const lean = @import("lean");
 
-export fn my_function(obj: lean.obj_arg) lean.obj_res {
+export fn my_function(obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
     defer lean.lean_dec_ref(obj);
-    // ... use lean.* functions ...
+    
+    const result = lean.boxUsize(42);
+    return lean.ioResultMkOk(result);
 }
 ```
 
+### 5. Build and Run
+
+```bash
+lake build
+```
+
+The `build.zig` template automatically:
+- Detects your Lean installation
+- Generates FFI bindings from `lean.h` using `translateC`
+- Links against Lean runtime
+- Handles platform differences (Linux/macOS/Windows)
+- Adapts to Lean/Zig version differences
+
+**Bindings always match your installed Lean version.**
+
 ## Build Integration
 
-### Option A: Invoke via Lake
+When you add `lean-zig` as a dependency, Lake downloads it to `.lake/packages/lean-zig/`. The library provides a template `build.zig` you copy once to your project to set up the Zig build system.
 
-```lean
-target zigBuild pkg : Unit := do
-  let ws ← getWorkspace
-  let some leanZig := ws.findPackage? "lean-zig"
-    | error "lean-zig not found"
-  
-  Job.async do
-    let out ← IO.Process.output {
-      cmd := "zig"
-      args := #["build", "test"]
-      cwd := leanZig.dir
-    }
-    if out.exitCode != 0 then
-      error "zig build failed"
+### Step-by-Step Setup
+
+#### 1. Copy the Template
+
+After adding the dependency and running `lake update`, copy the template:
+
+```bash
+cp .lake/packages/lean-zig/template/build.zig ./
 ```
 
-### Option B: Depend on lean-zig Module
+#### 2. Customize the Template
 
-In your `build.zig.zon`:
-
-```zig
-.dependencies = .{
-    .@"lean-zig" = .{
-        .url = "https://github.com/unlifted/lean-zig/archive/main.tar.gz",
-        // Add actual hash
-    },
-},
-```
-
-Then in your `build.zig`:
+Open `build.zig` and customize line 26 to point to your Zig source:
 
 ```zig
-const lean_zig = b.dependency("lean-zig", .{
+// CUSTOMIZE THIS: Point to your FFI source file
+const lib = b.addStaticLibrary(.{
+    .name = "leanzig",
+    .root_source_file = .{ .path = "zig/my_ffi.zig" },  // ← Change this
     .target = target,
     .optimize = optimize,
 });
-
-const lean_module = lean_zig.module("lean-zig");
-your_lib.root_module.addImport("lean", lean_module);
 ```
+
+**Key customization points:**
+- **Line 26**: Set `.root_source_file` to your main Zig file (e.g., `"zig/ffi.zig"`)
+- **Line 24**: Optionally change library name from `"leanzig"` to match your project
+
+The template automatically:
+- Detects your Lean installation (`lean --print-prefix`)
+- Generates FFI bindings from `lean.h` using `translateC`
+- Links against Lean runtime libraries
+- Sets up the `lean` module for imports
+- Configures glibc 2.27 compatibility (for Zig 0.15+)
+
+#### 3. Configure Your Lakefile
+
+Add an `extern_lib` target that invokes Zig build:
+
+```lean
+extern_lib libleanzig pkg := do
+  let name := nameToStaticLib "leanzig"
+  let oFile := pkg.buildDir / name
+  
+  -- Invoke zig build
+  proc {
+    cmd := "zig"
+    args := #["build"]
+    cwd := pkg.dir
+  }
+  
+  -- Copy result to Lake's expected location
+  let srcFile := pkg.dir / "zig-out" / "lib" / name
+  IO.FS.writeBinFile oFile (← IO.FS.readBinFile srcFile)
+  
+  return Job.pure oFile
+```
+
+**Important**: The library name must match:
+- `nameToStaticLib "leanzig"` in lakefile
+- `.name = "leanzig"` in build.zig (line 24)
+- Your `extern_lib` declaration name (`libleanzig` above)
+
+#### 4. Write Your Zig FFI Code
+
+Create your Zig source file (e.g., `zig/my_ffi.zig`):
+
+```zig
+const lean = @import("lean");
+
+export fn my_function(obj: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+    _ = world;
+    defer lean.lean_dec_ref(obj);
+    
+    // Your logic here
+    const result = lean.boxUsize(42);
+    return lean.ioResultMkOk(result);
+}
+```
+
+**For multi-file projects**, just point to the root file in `build.zig` - Zig automatically compiles imported files:
+
+```
+zig/
+├── ffi.zig        ← Root (set as root_source_file in build.zig)
+├── helpers.zig    ← Imported by ffi.zig via @import("helpers.zig")
+└── math.zig       ← Imported by ffi.zig via @import("math.zig")
+```
+
+See [Example 11](../examples/11-multi-file/) for a complete multi-file demonstration.
+
+#### 5. Build and Run
+
+```bash
+lake build
+```
+
+Zig will automatically:
+- Generate bindings from your Lean installation's `lean.h`
+- Compile your FFI code with the lean-zig module available
+- Link against Lean runtime
+- Produce a static library for Lake to consume
+
+### Template Details
+
+The template `build.zig` (~120 lines) handles:
+
+**Version Detection and Compatibility:**
+- **Tested Versions**: Lean 4.25.0-4.26.0, Zig 0.14.0-0.15.2
+- **Auto-detection**: Runs `lean --print-prefix` at build time
+- **Platform awareness**: Automatically handles Linux/macOS/Windows differences
+- **glibc compatibility**: Sets glibc 2.27 target for Zig 0.15+ on Linux
+- **Windows library linking**: Uses direct `.a` file linking for MinGW compatibility
+
+**Automatic Configuration:**
+- Lean installation detection via `lean --print-prefix`
+- Binding generation from `lean.h` using `translateC`
+- Runtime library linking (`-lleanrt`, `-lleanshared`, `-lgmp`)
+
+**Platform Compatibility:**
+- **Linux**: glibc 2.27 target (prevents Zig 0.15+ copy_file_range errors)
+- **macOS**: Standard Unix library linking
+- **Windows**: MinGW direct .a linking (6 required libraries)
+
+**Module Setup:**
+- Exposes `lean` module for `@import("lean")` in your code
+- Manages dependencies automatically
+
+**Build Artifacts:**
+- Produces `zig-out/lib/libleanzig.a` (or platform equivalent)
+- Lake copies this to its build directory
+
+### Version Compatibility Notes
+
+The template is **version-aware** and handles differences automatically:
+
+1. **Zig 0.14 vs 0.15**: Automatically sets glibc 2.27 on Linux for 0.15+
+2. **Lean 4.25 vs 4.26**: Same library names (libleanrt, libleanshared)
+3. **Windows**: Uses direct .a linking instead of -l flags
+4. **Binding Generation**: `translateC` ensures perfect match with your Lean version
+
+**When upgrading Lean or Zig:**
+- Just run `lake build` - the template adapts automatically
+- If you see link errors, check the troubleshooting section below
+- Report version-specific issues on GitHub
+
+### Troubleshooting
+
+**"Unknown identifier" errors in lakefile:**
+- Ensure you're using Lake 5.0+ (Lean 4.26.0+)
+- Use `extern_lib name pkg := do` syntax (not `where`)
+
+**"lean: command not found" during build:**
+- Ensure `lean` is in your PATH: `which lean`
+- Check installation: `lean --version`
+
+**"undefined reference to copy_file_range" on older Linux:**
+- Zig 0.15 requires glibc 2.38 symbols
+- Template includes compatibility shim - check glibc target in build.zig line 38
+
+**Library name mismatch:**
+- `nameToStaticLib "leanzig"` (lakefile) must match `.name = "leanzig"` (build.zig)
+- `extern_lib libleanzig` just adds "lib" prefix per convention
+
+**Bindings don't match Lean version:**
+- Clean rebuild: `rm -rf .zig-cache zig-out && lake clean && lake build`
+- Template regenerates bindings from your installed Lean each build
+
+## Frequently Asked Questions
+
+### Do I need different build.zig files for different Lean or Zig versions?
+
+**No.** The template automatically adapts to your environment at build time:
+
+- Detects your platform (Linux/macOS/Windows)
+- Handles Zig version differences (0.14 vs 0.15 glibc compatibility)
+- Works with Lean 4.25.0 through 4.26.0+ (same library structure)
+- Uses `translateC` to generate bindings matching YOUR installed Lean
+
+**When you upgrade:** Just run `lake build` - no template changes needed (within tested version ranges).
+
+See [Version Compatibility Guide](version-compatibility.md) for details on tested combinations and future upgrade procedures.
+
+### What if my Zig project has multiple files?
+
+**You only specify the root file.** Zig's build system automatically compiles any files imported via `@import()`.
+
+**Example structure:**
+```
+zig/
+├── ffi.zig        ← Root file (set in build.zig)
+├── helpers.zig    ← Imported by ffi.zig
+└── math.zig       ← Imported by ffi.zig
+```
+
+**In build.zig:**
+```zig
+const ffi_module = b.createModule(.{
+    .root_source_file = b.path("zig/ffi.zig"),  // ← Just the root!
+    // ...
+});
+```
+
+**In ffi.zig:**
+```zig
+const helpers = @import("helpers.zig");  // Auto-compiled
+const math = @import("math.zig");        // Auto-compiled
+
+export fn my_function(...) { ... }
+```
+
+See [Example 11 - Multi-File Projects](../examples/11-multi-file/) for a complete demonstration.
+
+### When would I need to update build.zig?
+
+**Rarely.** The template handles version differences automatically. You'd only update if:
+
+1. **Lean major version change** (e.g., 5.0.0) changes library names or structure
+2. **Zig breaking change** (e.g., 1.0.0) alters build system API
+3. **New platform support** requires different linking strategy
+
+lean-zig maintainers will publish updated templates when needed and document in [CHANGELOG](../CHANGELOG.md).
+
+### Can I customize build.zig beyond the root source file?
+
+**Yes!** Common customizations:
+
+```zig
+// Different library name
+const lib = b.addLibrary(.{
+    .name = "myffi",  // ← Custom name
+    .root_module = ffi_module,
+    .linkage = .static,
+});
+
+// Additional Zig dependencies
+const my_dep = b.dependency("my-lib", .{});
+ffi_module.addImport("mylib", my_dep.module("mylib"));
+
+// Custom build options
+const custom_feature = b.option(bool, "feature", "Enable feature") orelse false;
+const options = b.addOptions();
+options.addOption(bool, "feature_enabled", custom_feature);
+ffi_module.addOptions("build_options", options);
+```
+
+The template is just a starting point - customize as needed for your project!
+
+## Troubleshooting (Original Section)
 
 ## Performance Considerations
 

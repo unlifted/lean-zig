@@ -54,6 +54,8 @@ check_examples() {
         "07-closures"
         "08-tasks"
         "09-complete-app"
+        "10-external-objects"
+        "11-multi-file"
     )
     
     local all_good=true
@@ -70,12 +72,53 @@ check_examples() {
     done
     
     if $all_good; then
-        echo -e "${GREEN}✓ All 9 examples present${NC}"
+        echo -e "${GREEN}✓ All 11 examples present${NC}"
         PASSED=$((PASSED + 1))
     else
         echo -e "${RED}✗ Some examples missing${NC}"
         FAILED=$((FAILED + 1))
         return 1
+    fi
+    echo ""
+}
+
+# Function to build all examples
+build_examples() {
+    echo -e "${BLUE}Building all examples...${NC}"
+    
+    local examples=(
+        "01-hello-ffi"
+        "02-boxing"
+        "03-constructors"
+        "04-arrays"
+        "05-strings"
+        "06-io-results"
+        "07-closures"
+        "08-tasks"
+        "09-complete-app"
+        "10-external-objects"
+        "11-multi-file"
+    )
+    
+    local build_failed=false
+    
+    for example in "${examples[@]}"; do
+        echo -e "  Building ${example}..."
+        if (cd "examples/$example" && lake clean && lake build) > /dev/null 2>&1; then
+            echo -e "  ${GREEN}✓${NC} ${example} built successfully"
+        else
+            echo -e "  ${RED}✗${NC} ${example} build failed"
+            build_failed=true
+        fi
+    done
+    
+    if $build_failed; then
+        echo -e "${RED}✗ Some examples failed to build${NC}"
+        FAILED=$((FAILED + 1))
+        return 1
+    else
+        echo -e "${GREEN}✓ All examples built successfully${NC}"
+        PASSED=$((PASSED + 1))
     fi
     echo ""
 }
@@ -155,14 +198,16 @@ check_documentation() {
 # Main execution
 echo "This script validates that:"
 echo "  1. All test suite tests pass (117 tests)"
-echo "  2. All example documentation is present (9 examples)"
-echo "  3. Example concepts are covered by tests"
-echo "  4. Documentation is complete"
+echo "  2. All example documentation is present (11 examples)"
+echo "  3. All examples build successfully"
+echo "  4. Example concepts are covered by tests"
+echo "  5. Documentation is complete"
 echo ""
 
 # Run all checks
 run_test_suite || true
 check_examples || true
+build_examples || true
 verify_concept_coverage || true
 check_documentation || true
 

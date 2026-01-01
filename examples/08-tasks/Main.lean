@@ -4,27 +4,18 @@
 @[extern "zig_validate_task_api"]
 opaque zigValidateTaskApi : IO Unit
 
-/-- Example: Parallel computation (Lean native) -/
-def parallelSum (n : Nat) : IO Nat := do
-  -- Spawn two tasks computing partial sums
-  let task1 ← Task.spawn (fun () => List.range (n / 2) |>.foldl (· + ·) 0)
-  let task2 ← Task.spawn (fun () => List.range (n / 2) |>.foldl (· + ·) 0)
-
-  -- Wait for both results
-  let sum1 ← task1.get
-  let sum2 ← task2.get
-
-  pure (sum1 + sum2)
-
 def main : IO Unit := do
   -- Validate API
   zigValidateTaskApi
   IO.println "Task API validated"
 
-  -- Note about task execution
+  IO.println ""
   IO.println "Note: Full task execution requires Lean IO runtime initialization"
-  IO.println "See lean-zig test suite for task API validation examples"
-
-  -- Demonstrate Lean-native task usage
-  -- let result ← parallelSum 100
-  -- IO.println s!"Parallel sum: {result}"
+  IO.println "This example validates that the task API functions are available"
+  IO.println "See lean-zig test suite for comprehensive task API validation"
+  IO.println ""
+  IO.println "Available task operations:"
+  IO.println "  - taskSpawn: Spawn async computation"
+  IO.println "  - taskMap: Map function over task result"
+  IO.println "  - taskBind: Monadic bind for task sequencing"
+  IO.println "  - lean_task_get/lean_task_get_own: Wait for completion"

@@ -45,19 +45,18 @@ export fn zig_add(a: lean.obj_arg, b: lean.obj_arg, world: lean.obj_arg) lean.ob
 }
 
 /// Multiply two floats
-/// Note: Floats require heap allocation, so this is slower than integer boxing
-export fn zig_multiply_floats(a: lean.obj_arg, b: lean.obj_arg, world: lean.obj_arg) lean.obj_res {
+/// Note: Lean's Float type is passed as unboxed f64 via ABI
+export fn zig_multiply_floats(a: f64, b: f64, world: lean.obj_arg) lean.obj_res {
     _ = world;
 
-    // Unbox the floats
-    const x = lean.unboxFloat(a);
-    const y = lean.unboxFloat(b);
+    // Floats are already unboxed in the ABI
+    const product = a * b;
 
-    // Multiply
-    const product = x * y;
-
-    // Box the result (allocates on heap)
-    const boxed = lean.boxFloat(product);
+    // Return as boxed float for IO result
+    const boxed = lean.boxFloat(product) orelse {
+        const err = lean.lean_mk_string("Float boxing failed");
+        return lean.ioResultMkError(err);
+    };
 
     return lean.ioResultMkOk(boxed);
 }
